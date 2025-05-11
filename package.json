@@ -11,7 +11,7 @@
     "Ava Johnson <ava.johnson@zohomail.com>"
   ],
   "engines": {
-    "node": ">= 16.15.0"
+    "node": ">= 20.18.3"
   },
   "license": "MIT",
   "dependencies": {
