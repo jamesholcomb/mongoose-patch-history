@@ -25,14 +25,14 @@
     "@istanbuljs/nyc-config-typescript": "^1.0.2",
     "@types/lodash": "^4.17.16",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^22.15.17",
+    "@types/node": "^20.14.0",
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
+    "husky": "^9.1.7",
     "mocha": "^11.2.2",
     "nyc": "^17.1.0",
-    "pre-commit": "^1.2.2",
     "prettier": "^3.5.3",
     "source-map-support": "^0.5.21",
     "tsx": "^4.19.4",
@@ -44,12 +44,9 @@
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --fix",
     "coverage": "nyc mocha",
     "prepublishOnly": "npm run compile",
+    "prepare": "husky",
     "prettier": "prettier --no-semi --single-quote --trailing-comma none --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "mocha \"test/**/*.test.ts\""
-  },
-  "pre-commit": {
-    "run": "prettier, lint, test, compile",
-    "silent": true
   },
   "files": [
     "dist",

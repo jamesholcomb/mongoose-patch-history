@@ -1,0 +1,17 @@
+echo "Running Prettier..."
+npm run prettier
+
+echo "Running ESLint..."
+npm run lint
+
+echo "Staging changes from Prettier & ESLint..."
+git add .
+
+echo "Running tests and compiling..."
+if npm run test && npm run compile; then
+  echo "Pre-commit checks passed."
+  exit 0
+else
+  echo "Pre-commit checks failed. Commit aborted."
+  exit 1
+fi
