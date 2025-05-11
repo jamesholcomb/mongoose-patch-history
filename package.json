@@ -47,7 +47,7 @@
     "coverage": "nyc mocha",
     "prepublishOnly": "npm run compile",
     "prettier": "prettier --no-semi --single-quote --trailing-comma es5 --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "test": "mocha \"test/**/*.ts\""
+    "test": "mocha \"test/**/*.test.ts\""
   },
   "pre-commit": {
     "run": "prettier, lint, test, compile",
