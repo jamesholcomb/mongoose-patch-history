@@ -11,14 +11,14 @@ describe('mongoose-patch-history', () => {
     removePatches: false,
     includes: {
       text: {
-        type: String,
+        type: String
       },
       user: {
         type: Schema.Types.ObjectId,
         required: true,
-        from: '_user',
-      },
-    },
+        from: '_user'
+      }
+    }
   })
 
   CommentSchema.virtual('user').set(function (this: any, user: any) {
@@ -29,7 +29,7 @@ describe('mongoose-patch-history', () => {
     {
       title: String,
       tags: { type: [String], default: void 0 },
-      active: { type: Boolean, default: false },
+      active: { type: Boolean, default: false }
     },
     { timestamps: true }
   ).plugin(patchHistory, {
@@ -37,13 +37,13 @@ describe('mongoose-patch-history', () => {
     name: 'postPatches',
     transforms: [
       (name: any): any => name.toLowerCase(),
-      (): any => 'post_history',
+      (): any => 'post_history'
     ],
     includes: {
       version: { type: Number, from: '__v' },
       reason: { type: String, from: '__reason' },
-      user: { type: Object, from: '__user' },
-    },
+      user: { type: Object, from: '__user' }
+    }
   })
   PostSchema.virtual('user').set(function (this: any, user: any) {
     this.__user = user
@@ -54,10 +54,10 @@ describe('mongoose-patch-history', () => {
 
   const FruitSchema: any = new Schema({
     _id: { type: String, default: random(100).toString() },
-    name: { type: String },
+    name: { type: String }
   }).plugin(patchHistory, {
     mongoose: mongoose,
-    name: 'fruitPatches',
+    name: 'fruitPatches'
   })
 
   const ExcludeSchema: any = new Schema({
@@ -68,17 +68,17 @@ describe('mongoose-patch-history', () => {
       array: [
         {
           hidden: { type: String },
-          property: { hidden: { type: String } },
-        },
-      ],
+          property: { hidden: { type: String } }
+        }
+      ]
     },
     array: [
       {
         hiddenProperty: { type: String },
-        property: { type: String },
-      },
+        property: { type: String }
+      }
     ],
-    emptyArray: [{ hiddenProperty: { type: String } }],
+    emptyArray: [{ hiddenProperty: { type: String } }]
   }).plugin(patchHistory, {
     mongoose: mongoose,
     name: 'excludePatches',
@@ -88,25 +88,25 @@ describe('mongoose-patch-history', () => {
       '/object/array/1/hidden',
       '/object/array/*/property/hidden',
       '/array/*/hiddenProperty',
-      '/emptyArray/*/hiddenProperty',
-    ],
+      '/emptyArray/*/hiddenProperty'
+    ]
   })
 
   const SportSchema: any = new Schema({
     _id: { type: Number, default: random(100) },
-    name: { type: String },
+    name: { type: String }
   }).plugin(patchHistory, {
     mongoose: mongoose,
-    name: 'sportPatches',
+    name: 'sportPatches'
   })
 
   const PricePoolSchema: any = new Schema({
     name: { type: String },
-    prices: [{ name: { type: String }, value: { type: Number } }],
+    prices: [{ name: { type: String }, value: { type: Number } }]
   }).plugin(patchHistory, {
     mongoose: mongoose,
     name: 'pricePoolPatches',
-    trackOriginalValue: true,
+    trackOriginalValue: true
   })
 
   let Comment: any,
@@ -171,7 +171,7 @@ describe('mongoose-patch-history', () => {
       assert.doesNotThrow(() =>
         TestSchema.plugin(patchHistory, {
           mongoose: mongoose,
-          name,
+          name
         })
       )
     })
@@ -189,7 +189,7 @@ describe('mongoose-patch-history', () => {
               JSON.stringify(patches[0].ops),
               JSON.stringify([
                 { op: 'add', path: '/title', value: 'foo' },
-                { op: 'add', path: '/active', value: false },
+                { op: 'add', path: '/active', value: false }
               ])
             )
           }),
@@ -198,7 +198,7 @@ describe('mongoose-patch-history', () => {
           .then(() =>
             Comment.create({
               text: 'wat',
-              user: new ObjectId(),
+              user: new ObjectId()
             })
           )
           .then((comment: any) => comment.patches.find({ ref: comment.id }))
@@ -208,7 +208,7 @@ describe('mongoose-patch-history', () => {
               JSON.stringify(patches[0].ops),
               JSON.stringify([{ op: 'add', path: '/text', value: 'wat' }])
             )
-          }),
+          })
       ])
         .then(() => done())
         .catch(done)
@@ -224,14 +224,14 @@ describe('mongoose-patch-history', () => {
             array: [
               { hidden: 'h', property: { hidden: 'h' } },
               { hidden: 'h', property: { hidden: 'h' } },
-              { hidden: 'h', property: { hidden: 'h' } },
-            ],
+              { hidden: 'h', property: { hidden: 'h' } }
+            ]
           },
           array: [
             { hiddenProperty: 'hidden', property: 'visible' },
-            { hiddenProperty: 'hidden', property: 'visible' },
+            { hiddenProperty: 'hidden', property: 'visible' }
           ],
-          emptyArray: [{ hiddenProperty: 'hidden' }],
+          emptyArray: [{ hiddenProperty: 'hidden' }]
         })
           .then((exclude: any) => exclude.patches.find({ ref: exclude._id }))
           .then((patches: any) => {
@@ -243,14 +243,14 @@ describe('mongoose-patch-history', () => {
                 {
                   op: 'add',
                   path: '/object',
-                  value: { array: [{ hidden: 'h' }, {}, { hidden: 'h' }] },
+                  value: { array: [{ hidden: 'h' }, {}, { hidden: 'h' }] }
                 },
                 {
                   op: 'add',
                   path: '/array',
-                  value: [{ property: 'visible' }, { property: 'visible' }],
+                  value: [{ property: 'visible' }, { property: 'visible' }]
                 },
-                { op: 'add', path: '/emptyArray', value: [{}] },
+                { op: 'add', path: '/emptyArray', value: [{}] }
               ])
             )
           })
@@ -267,7 +267,7 @@ describe('mongoose-patch-history', () => {
           post.set({
             title: 'bar',
             reason: 'test reason',
-            user: { name: 'Joe' },
+            user: { name: 'Joe' }
           })
           return post.save()
         })
@@ -350,7 +350,7 @@ describe('mongoose-patch-history', () => {
         { title: 'findOneAndUpdate' },
         {
           upsert: true,
-          new: true,
+          new: true
         }
       )
         .then(() => Post.findOne({ title: 'findOneAndUpdate' }))
@@ -363,7 +363,7 @@ describe('mongoose-patch-history', () => {
             JSON.stringify(patches[0].ops),
             JSON.stringify([
               { op: 'add', path: '/title', value: 'findOneAndUpdate' },
-              { op: 'add', path: '/active', value: false },
+              { op: 'add', path: '/active', value: false }
             ])
           )
         })
@@ -388,7 +388,7 @@ describe('mongoose-patch-history', () => {
           assert.equal(
             JSON.stringify(patches[1].ops),
             JSON.stringify([
-              { op: 'replace', path: '/title', value: 'findOneAndUpdate2' },
+              { op: 'replace', path: '/title', value: 'findOneAndUpdate2' }
             ])
           )
           assert.equal(patches[1].reason, 'test reason')
@@ -434,7 +434,7 @@ describe('mongoose-patch-history', () => {
       )
         .then((post: any) =>
           post.value.patches.find({
-            ref: post.value._id,
+            ref: post.value._id
           })
         )
         .then((patches: any) => assert.strictEqual(patches.length, 2))
@@ -457,7 +457,7 @@ describe('mongoose-patch-history', () => {
           assert.equal(
             JSON.stringify(patches[1].ops),
             JSON.stringify([
-              { op: 'replace', path: '/title', value: 'updateOne2' },
+              { op: 'replace', path: '/title', value: 'updateOne2' }
             ])
           )
         })
@@ -481,8 +481,8 @@ describe('mongoose-patch-history', () => {
         name: 'test',
         prices: [
           { name: 'test1', value: 1 },
-          { name: 'test2', value: 2 },
-        ],
+          { name: 'test2', value: 2 }
+        ]
       })
         .then((pricePool: any) =>
           PricePool.updateMany(
@@ -515,7 +515,7 @@ describe('mongoose-patch-history', () => {
           assert.equal(
             JSON.stringify(patches[1].ops),
             JSON.stringify([
-              { op: 'replace', path: '/title', value: 'updateMany2' },
+              { op: 'replace', path: '/title', value: 'updateMany2' }
             ])
           )
         })
@@ -601,7 +601,7 @@ describe('mongoose-patch-history', () => {
             JSON.stringify(patches[0].ops),
             JSON.stringify([
               { op: 'add', path: '/title', value: 'upsert1' },
-              { op: 'add', path: '/active', value: false },
+              { op: 'add', path: '/active', value: false }
             ])
           )
         })
@@ -789,7 +789,7 @@ describe('mongoose-patch-history', () => {
         () => assert(!!~mongoose.modelNames().indexOf('CommentPatches')),
         getCollectionNames().then((names: any) => {
           assert(!!~names.indexOf('comment_patches'))
-        }),
+        })
       ])
         .then(() => done())
         .catch(done)
@@ -800,7 +800,7 @@ describe('mongoose-patch-history', () => {
         () => assert(!!~mongoose.modelNames().indexOf('postPatches')),
         getCollectionNames().then((names: any) => {
           assert(!!~names.indexOf('post_history'))
-        }),
+        })
       ])
         .then(() => done())
         .catch(done)
@@ -865,7 +865,7 @@ describe('mongoose-patch-history', () => {
       Organization = mongoose.model(
         'Organization',
         new mongoose.Schema({
-          name: String,
+          name: String
         })
       )
 
@@ -873,13 +873,13 @@ describe('mongoose-patch-history', () => {
         name: String,
         organization: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: 'Organization',
-        },
+          ref: 'Organization'
+        }
       })
 
       PersonSchema.plugin(patchHistory, {
         mongoose: mongoose,
-        name: 'personPatches',
+        name: 'personPatches'
       })
       Person = mongoose.model('Person', PersonSchema)
     })
@@ -893,7 +893,7 @@ describe('mongoose-patch-history', () => {
           Promise.all([
             o1,
             o2,
-            Person.create({ name: 'Bob', organization: o1._id }),
+            Person.create({ name: 'Bob', organization: o1._id })
           ])
         )
         .then(([o1, o2, p]: [any, any, any]) =>
@@ -929,13 +929,13 @@ describe('mongoose-patch-history', () => {
 
     before(() => {
       const CompanySchema: any = new mongoose.Schema({
-        name: String,
+        name: String
       })
 
       CompanySchema.plugin(patchHistory, {
         mongoose: mongoose,
         name: 'companyPatches',
-        trackOriginalValue: true,
+        trackOriginalValue: true
       })
       Company = mongoose.model('Company', CompanySchema)
     })
@@ -960,8 +960,8 @@ describe('mongoose-patch-history', () => {
                 op: 'replace',
                 path: '/name',
                 value: 'Private 2',
-                originalValue: 'Private',
-              },
+                originalValue: 'Private'
+              }
             ])
           )
           assert.equal(
@@ -971,8 +971,8 @@ describe('mongoose-patch-history', () => {
                 op: 'replace',
                 path: '/name',
                 value: 'Private 3',
-                originalValue: 'Private 2',
-              },
+                originalValue: 'Private 2'
+              }
             ])
           )
         })

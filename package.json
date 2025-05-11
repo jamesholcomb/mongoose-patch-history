@@ -16,7 +16,6 @@
   "license": "MIT",
   "dependencies": {
     "fast-json-patch": "^2.2.1",
-    "humps": "^2.0.1",
     "lodash": "^4.17.21"
   },
   "peerDependencies": {
@@ -24,7 +23,6 @@
   },
   "devDependencies": {
     "@istanbuljs/nyc-config-typescript": "^1.0.2",
-    "@types/humps": "^2.0.6",
     "@types/lodash": "^4.17.16",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.15.17",
@@ -46,7 +44,7 @@
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --fix",
     "coverage": "nyc mocha",
     "prepublishOnly": "npm run compile",
-    "prettier": "prettier --no-semi --single-quote --trailing-comma es5 --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "prettier": "prettier --no-semi --single-quote --trailing-comma none --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "mocha \"test/**/*.test.ts\""
   },
   "pre-commit": {

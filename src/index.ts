@@ -1,7 +1,16 @@
 import assert from 'assert'
 import jsonpatch from 'fast-json-patch'
-import { decamelize, pascalize } from 'humps'
-import { dropRightWhile, each, get, map, merge, omit, tail } from 'lodash'
+import {
+  camelCase,
+  dropRightWhile,
+  each,
+  get,
+  map,
+  merge,
+  omit,
+  snakeCase,
+  tail
+} from 'lodash'
 import { Schema } from 'mongoose'
 import { inherits } from 'util'
 
@@ -19,7 +28,7 @@ const createPatchModel = (options: any): any => {
   const def: any = {
     date: { type: Date, required: true, default: Date.now },
     ops: { type: [], required: true },
-    ref: { type: options._idType, required: true, index: true },
+    ref: { type: options._idType, required: true, index: true }
   }
 
   each(options.includes, (type: any, name: any) => {
@@ -39,8 +48,8 @@ const defaultOptions: any = {
   includes: {},
   excludes: [],
   removePatches: true,
-  transforms: [pascalize, decamelize],
-  trackOriginalValue: false,
+  transforms: [camelCase, snakeCase],
+  trackOriginalValue: false
 }
 
 const ARRAY_INDEX_WILDCARD = '*'
@@ -192,7 +201,7 @@ export default function (schema: any, opts: any): void {
           delete ret[schema.options.timestamps.createdAt || 'createdAt']
           delete ret[schema.options.timestamps.updatedAt || 'updatedAt']
         }
-      },
+      }
     })
   }
 
@@ -328,7 +337,7 @@ export default function (schema: any, opts: any): void {
     const data: any = {
       ops,
       ref,
-      date: document.updatedAt || document.createdAt,
+      date: document.updatedAt || document.createdAt
     }
 
     each(options.includes, (type: any, name: string) => {
@@ -401,8 +410,8 @@ export default function (schema: any, opts: any): void {
     if (this._originalId) {
       conditions = {
         _id: {
-          $eq: this._originalId,
-        },
+          $eq: this._originalId
+        }
       }
     } else {
       conditions = mergeQueryConditionsWithUpdate(
