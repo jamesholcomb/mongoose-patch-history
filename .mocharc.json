@@ -4,6 +4,8 @@
   "colors": true,
   "ui": "bdd",
   "recursive": true,
-  "require": ["@babel/register"],
+  "require": [
+    "tsx"
+  ],
   "exit": true
 }

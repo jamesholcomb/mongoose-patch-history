@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "es2016", // Or a newer version like ES2020, ESNext, depending on your Node.js version support
+    "module": "commonjs",
+    "outDir": "./dist", // Changed from ./lib to ./dist
+    "rootDir": ".", // Set rootDir to the project root
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowJs": true, // Allow JavaScript files to be compiled
+    "declaration": true, // Generate corresponding '.d.ts' files
+    "resolveJsonModule": true, // Allows importing JSON files
+    // Add any other specific compiler options you need
+  },
+  "include": [
+    "src/**/*", // Specifies the files to be included in compilation
+    "test/**/*" // Include test files
+  ],
+  "exclude": [
+    "node_modules",
+    "dist" // Changed from lib to dist
+  ]
+}

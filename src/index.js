@@ -3,14 +3,17 @@ import jsonpatch from 'fast-json-patch'
 import { decamelize, pascalize } from 'humps'
 import { dropRightWhile, each, get, map, merge, omit, tail } from 'lodash'
 import { Schema } from 'mongoose'
+import { inherits } from 'util'
 
-export const RollbackError = function (message /*, extra */) {
-  Error.captureStackTrace(this, this.constructor)
-  this.name = 'RollbackError'
-  this.message = message
+export class RollbackError extends Error {
+  constructor(message) {
+    super(message)
+    this.name = 'RollbackError'
+    Error.captureStackTrace(this, this.constructor)
+  }
 }
 
-require('util').inherits(RollbackError, Error)
+inherits(RollbackError, Error)
 
 const createPatchModel = (options) => {
   const def = {

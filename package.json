@@ -2,7 +2,8 @@
   "name": "mongoose-patch-history",
   "version": "2.0.1",
   "description": "Mongoose plugin that saves a history of JSON patch operations for all documents belonging to a schema in an associated 'patches' collection",
-  "main": "lib/index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "author": "Christoph Werner <christoph@codepunkt.de>",
   "contributors": [
     "Robin Weinreich <robin.weinreich@posteo.de>",
@@ -16,35 +17,51 @@
   "dependencies": {
     "fast-json-patch": "^2.2.1",
     "humps": "^2.0.1",
-    "lodash": "^4.17.20"
+    "lodash": "^4.17.21"
   },
   "peerDependencies": {
     "mongoose": "^6"
   },
   "devDependencies": {
-    "@babel/cli": "^7.19.3",
-    "@babel/core": "7.20.2",
-    "@babel/preset-env": "7.20.2",
-    "@babel/register": "7.18.9",
-    "coveralls": "^3.0.0",
-    "eslint": "^8.26.0",
-    "eslint-plugin-import": "^2.26.0",
-    "istanbul": "^0.4.5",
-    "mocha": "^9.1.2",
+    "@istanbuljs/nyc-config-typescript": "^1.0.2",
+    "@types/humps": "^2.0.6",
+    "@types/lodash": "^4.17.16",
+    "@types/node": "^22.15.17",
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.31.0",
+    "mocha": "^11.2.2",
+    "nyc": "^17.1.0",
     "pre-commit": "^1.2.2",
-    "prettier": "^2.1.1"
+    "prettier": "^3.5.3",
+    "source-map-support": "^0.5.21",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
   },
   "scripts": {
-    "addCompile": "git add lib/",
-    "coverage": "istanbul cover _mocha -- --require babel-register",
-    "compile": "rm -rf lib/ && babel -d lib/ src/",
-    "prepublish": "npm run compile",
+    "clean": "rm -rf dist",
+    "compile": "npm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint src/**/*.js test/**/*.js --fix",
+    "coverage": "nyc mocha",
+    "prepublishOnly": "npm run compile",
     "prettier": "prettier --no-semi --single-quote --trailing-comma es5 --write src/**/*.js",
     "test": "mocha test/"
   },
   "pre-commit": {
-    "run": "prettier, test, compile, addCompile",
+    "run": "prettier, lint, test, compile",
     "silent": true
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
   "repository": {
     "type": "git",
