@@ -26,6 +26,7 @@
     "@istanbuljs/nyc-config-typescript": "^1.0.2",
     "@types/humps": "^2.0.6",
     "@types/lodash": "^4.17.16",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^22.15.17",
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
@@ -42,11 +43,11 @@
   "scripts": {
     "clean": "rm -rf dist",
     "compile": "npm run clean && tsc -p tsconfig.build.json",
-    "lint": "eslint src/**/*.js test/**/*.js --fix",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --fix",
     "coverage": "nyc mocha",
     "prepublishOnly": "npm run compile",
-    "prettier": "prettier --no-semi --single-quote --trailing-comma es5 --write src/**/*.js",
-    "test": "mocha test/"
+    "prettier": "prettier --no-semi --single-quote --trailing-comma es5 --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "test": "mocha \"test/**/*.ts\""
   },
   "pre-commit": {
     "run": "prettier, lint, test, compile",

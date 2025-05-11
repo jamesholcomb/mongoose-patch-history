@@ -6,7 +6,7 @@ import { Schema } from 'mongoose'
 import { inherits } from 'util'
 
 export class RollbackError extends Error {
-  constructor(message) {
+  constructor(message: any) {
     super(message)
     this.name = 'RollbackError'
     Error.captureStackTrace(this, this.constructor)
@@ -15,18 +15,18 @@ export class RollbackError extends Error {
 
 inherits(RollbackError, Error)
 
-const createPatchModel = (options) => {
-  const def = {
+const createPatchModel = (options: any): any => {
+  const def: any = {
     date: { type: Date, required: true, default: Date.now },
     ops: { type: [], required: true },
     ref: { type: options._idType, required: true, index: true },
   }
 
-  each(options.includes, (type, name) => {
+  each(options.includes, (type: any, name: any) => {
     def[name] = omit(type, 'from')
   })
 
-  const PatchSchema = new Schema(def)
+  const PatchSchema: any = new Schema(def)
 
   return options.mongoose.model(
     options.transforms[0](`${options.name}`),
@@ -35,7 +35,7 @@ const createPatchModel = (options) => {
   )
 }
 
-const defaultOptions = {
+const defaultOptions: any = {
   includes: {},
   excludes: [],
   removePatches: true,
@@ -51,7 +51,8 @@ const ARRAY_INDEX_WILDCARD = '*'
  *
  * @param {string} path Path to split
  */
-const getArrayFromPath = (path) => path.replace(/^\//, '').split('/')
+const getArrayFromPath = (path: string): string[] =>
+  path.replace(/^\//, '').split('/')
 
 /**
  * Checks the provided `json-patch-operation` on `excludePath`.
@@ -63,11 +64,13 @@ const getArrayFromPath = (path) => path.replace(/^\//, '').split('/')
  *
  * @return `false` if `patch.value` is `{}` or `undefined` after remove, `true` in any other case
  */
-const deepRemovePath = (patch, excludePath) => {
-  const operationPath = sanitizeEmptyPath(getArrayFromPath(patch.path))
+const deepRemovePath = (patch: any, excludePath: string[]): boolean => {
+  const operationPath: string[] = sanitizeEmptyPath(
+    getArrayFromPath(patch.path)
+  )
 
   if (isPathContained(operationPath, excludePath)) {
-    let value = patch.value
+    let value: any = patch.value
 
     // because the paths overlap start at patchPath.length
     // e.g.: patch: { path:'/object', value:{ property: 'test' } }
@@ -78,7 +81,7 @@ const deepRemovePath = (patch, excludePath) => {
         // start over with each array element and make a fresh check
         // Note: it can happen that array elements are rendered to: {}
         //         we need to keep them to keep the order of array elements consistent
-        value.forEach((elem) => {
+        value.forEach((elem: any) => {
           deepRemovePath({ path: '/', value: elem }, excludePath.slice(i + 1))
         })
 
@@ -112,43 +115,48 @@ const deepRemovePath = (patch, excludePath) => {
  * Sanitizes a path `['']` to be used with `isPathContained()`
  * @param {String[]} path
  */
-const sanitizeEmptyPath = (path) =>
+const sanitizeEmptyPath = (path: string[]): string[] =>
   path.length === 1 && path[0] === '' ? [] : path
 
 // Checks if 'fractionPath' is contained in fullPath
 // Exp. 1: fractionPath '/path/to',              fullPath '/path/to/object'       => true
 // Exp. 2: fractionPath '/arrayPath/*/property', fullPath '/arrayPath/1/property' => true
-const isPathContained = (fractionPath, fullPath) =>
+const isPathContained = (fractionPath: string[], fullPath: string[]): boolean =>
   fractionPath.every(
-    (entry, idx) =>
+    (entry: string, idx: number) =>
       entryIsIdentical(entry, fullPath[idx]) ||
       matchesArrayWildcard(entry, fullPath[idx])
   )
 
-const entryIsIdentical = (entry1, entry2) => entry1 === entry2
+const entryIsIdentical = (entry1: string, entry2: string): boolean =>
+  entry1 === entry2
 
-const matchesArrayWildcard = (entry1, entry2) =>
+const matchesArrayWildcard = (entry1: string, entry2: string): boolean =>
   isArrayIndexWildcard(entry1) && isIntegerGreaterEqual0(entry2)
 
-const isArrayIndexWildcard = (entry) => entry === ARRAY_INDEX_WILDCARD
+const isArrayIndexWildcard = (entry: string): boolean =>
+  entry === ARRAY_INDEX_WILDCARD
 
-const isIntegerGreaterEqual0 = (entry) =>
+const isIntegerGreaterEqual0 = (entry: string): boolean =>
   Number.isInteger(Number(entry)) && Number(entry) >= 0
 
 // used to convert bson to json - especially ObjectID references need
 // to be converted to hex strings so that the jsonpatch `compare` method
 // works correctly
-const toJSON = (obj) => JSON.parse(JSON.stringify(obj))
+const toJSON = (obj: any): any => JSON.parse(JSON.stringify(obj))
 
 // helper function to merge query conditions after an update has happened
 // useful if a property which was initially defined in _conditions got overwritten
 // with the update
-const mergeQueryConditionsWithUpdate = (_conditions, _update) => {
-  const update = _update ? _update.$set || _update : _update
-  const conditions = Object.assign({}, _conditions, update)
+const mergeQueryConditionsWithUpdate = (
+  _conditions: any,
+  _update: any
+): any => {
+  const update: any = _update ? _update.$set || _update : _update
+  const conditions: any = Object.assign({}, _conditions, update)
 
   // excluding updates other than $set
-  Object.keys(conditions).forEach((key) => {
+  Object.keys(conditions).forEach((key: string) => {
     if (key.includes('$')) {
       delete conditions[key]
     }
@@ -156,8 +164,8 @@ const mergeQueryConditionsWithUpdate = (_conditions, _update) => {
   return conditions
 }
 
-export default function (schema, opts) {
-  const options = merge({}, defaultOptions, opts)
+export default function (schema: any, opts: any): void {
+  const options: any = merge({}, defaultOptions, opts)
 
   // get _id type from schema
   options._idType = schema.tree._id.type
@@ -173,11 +181,11 @@ export default function (schema, opts) {
 
   // used to compare instance data snapshots. depopulates instance,
   // removes version key and object id
-  schema.methods.data = function () {
+  schema.methods.data = function (this: any): any {
     return this.toObject({
       depopulate: true,
       versionKey: false,
-      transform: (doc, ret /*, options*/) => {
+      transform: (doc: any, ret: any /*, options: any*/) => {
         delete ret._id
         // if timestamps option is set on schema, ignore timestamp fields
         if (schema.options.timestamps) {
@@ -189,23 +197,28 @@ export default function (schema, opts) {
   }
 
   // roll the document back to the state of a given patch id()
-  schema.methods.rollback = function (patchId, data, save = true) {
+  schema.methods.rollback = function (
+    this: any,
+    patchId: any,
+    data: any,
+    save: boolean = true
+  ): Promise<any> {
     return this.patches
       .find({ ref: this.id })
       .sort({ date: 1 })
       .exec()
       .then(
-        (patches) =>
-          new Promise((resolve, reject) => {
+        (patches: any[]): Promise<any> =>
+          new Promise((resolve: any, reject: any) => {
             // patch doesn't exist
             if (!~map(patches, 'id').indexOf(patchId)) {
               return reject(new RollbackError("patch doesn't exist"))
             }
 
             // get all patches that should be applied
-            const apply = dropRightWhile(
+            const apply: any[] = dropRightWhile(
               patches,
-              (patch) => patch.id !== patchId
+              (patch: any): boolean => patch.id !== patchId
             )
 
             // if the patches that are going to be applied are all existing patches,
@@ -215,8 +228,8 @@ export default function (schema, opts) {
             }
 
             // apply patches to `state`
-            const state = {}
-            apply.forEach((patch) => {
+            const state: any = {}
+            apply.forEach((patch: any) => {
               jsonpatch.applyPatch(state, patch.ops, true)
             })
 
@@ -235,13 +248,15 @@ export default function (schema, opts) {
 
   // create patch model, enable static model access via `Patches` and
   // instance method access through an instances `patches` property
-  const Patches = createPatchModel(options)
+  const Patches: any = createPatchModel(options)
   schema.statics.Patches = Patches
-  schema.virtual('patches').get(() => Patches)
+  schema.virtual('patches').get(function (this: any): any {
+    return Patches
+  })
 
   // after a document is initialized or saved, fresh snapshots of the
   // documents data are created
-  const snapshot = function () {
+  const snapshot = function (this: any): void {
     this._original = toJSON(this.data())
   }
   schema.post('init', snapshot)
@@ -249,13 +264,16 @@ export default function (schema, opts) {
 
   // when a document is removed and `removePatches` is not set to false ,
   // all patch documents from the associated patch collection are also removed
-  function deletePatches(document) {
+  function deletePatches(document: any): Promise<any> {
     return document.patches
       .find({ ref: document._id })
-      .then((patches) => Promise.all(patches.map((patch) => patch.remove())))
+      .then(
+        (patches: any[]): Promise<any[]> =>
+          Promise.all(patches.map((patch: any) => patch.remove()))
+      )
   }
 
-  schema.pre('remove', function (next) {
+  schema.pre('remove', function (this: any, next: any): any {
     if (!options.removePatches) {
       return next()
     }
@@ -269,19 +287,22 @@ export default function (schema, opts) {
   // computed. if the patch consists of one or more operations (meaning the
   // document has changed), a new patch document reflecting the changes is
   // added to the associated patch collection
-  function createPatch(document, queryOptions = {}) {
-    const { _id: ref } = document
-    let ops = jsonpatch.compare(
+  function createPatch(document: any, queryOptions: any = {}): Promise<any> {
+    const { _id: ref }: any = document
+    let ops: any[] = jsonpatch.compare(
       document._original || {},
       toJSON(document.data())
     )
     if (options.excludes.length > 0) {
-      ops = ops.filter((op) => {
-        const pathArray = getArrayFromPath(op.path)
+      ops = ops.filter((op: any): boolean => {
+        const pathArray: string[] = getArrayFromPath(op.path)
         return (
-          !options.excludes.some((exclude) =>
+          !options.excludes.some((exclude: string[]): boolean =>
             isPathContained(exclude, pathArray)
-          ) && options.excludes.every((exclude) => deepRemovePath(op, exclude))
+          ) &&
+          options.excludes.every((exclude: string[]): boolean =>
+            deepRemovePath(op, exclude)
+          )
         )
       })
     }
@@ -293,23 +314,24 @@ export default function (schema, opts) {
 
     // track original values if enabled
     if (options.trackOriginalValue) {
-      ops.map((entry) => {
-        const path = tail(entry.path.split('/')).join('.')
+      ops.map((entry: any) => {
+        const path: string = tail(entry.path.split('/')).join('.')
         entry.originalValue = get(
           document.isNew ? {} : document._original,
           path
         )
+        return entry // Added return for .map
       })
     }
 
     // assemble patch data
-    const data = {
+    const data: any = {
       ops,
       ref,
       date: document.updatedAt || document.createdAt,
     }
 
-    each(options.includes, (type, name) => {
+    each(options.includes, (type: any, name: string) => {
       data[name] =
         document[type.from || name] || queryOptions[type.from || name]
     })
@@ -317,36 +339,42 @@ export default function (schema, opts) {
     return document.patches.create(data)
   }
 
-  schema.pre('save', function (next) {
+  schema.pre('save', function (this: any, next: any): any {
     createPatch(this)
       .then(() => next())
       .catch(next)
   })
 
-  schema.pre('findOneAndRemove', function (next) {
+  schema.pre('findOneAndRemove', function (this: any, next: any): any {
     if (!options.removePatches) {
       return next()
     }
 
-    const session = this.getOptions().session
+    const session: any = this.getOptions().session
 
     this.model
       .findOne(this._conditions)
       .session(session)
-      .then((original) => deletePatches(original))
+      .then((original: any): Promise<any> | undefined => {
+        // Added return type for .then callback
+        if (!original) {
+          return // Added check for original
+        }
+        return deletePatches(original)
+      })
       .then(() => next())
       .catch(next)
   })
 
   schema.pre('findOneAndUpdate', preUpdateOne)
 
-  function preUpdateOne(next) {
-    const session = this.getOptions().session
+  function preUpdateOne(this: any, next: any): void {
+    const session: any = this.getOptions().session
 
     this.model
       .findOne(this._conditions)
       .session(session)
-      .then((original) => {
+      .then((original: any): void => {
         if (original) {
           this._originalId = original._id
           this._original = toJSON(original.data())
@@ -356,17 +384,20 @@ export default function (schema, opts) {
       .catch(next)
   }
 
-  schema.post('findOneAndUpdate', function (doc, next) {
-    postUpdateOne.call(this, doc, next)
-  })
+  schema.post(
+    'findOneAndUpdate',
+    function (this: any, doc: any, next: any): void {
+      postUpdateOne.call(this, doc, next)
+    }
+  )
 
-  function postUpdateOne(result, next) {
+  function postUpdateOne(this: any, result: any, next: any): any {
     // result might be a mongodb ModifyResult, null or a Document
     if (result?.lastErrorObject?.n === 0 && result?.upsertedCount === 0) {
       return next()
     }
 
-    let conditions
+    let conditions: any
     if (this._originalId) {
       conditions = {
         _id: {
@@ -380,12 +411,12 @@ export default function (schema, opts) {
       )
     }
 
-    const session = this.getOptions().session
+    const session: any = this.getOptions().session
 
     this.model
       .findOne(conditions)
       .session(session)
-      .then((doc) => {
+      .then((doc: any): Promise<any> | undefined => {
         if (!doc) {
           return
         }
@@ -399,15 +430,15 @@ export default function (schema, opts) {
   schema.pre('updateOne', preUpdateOne)
   schema.post('updateOne', postUpdateOne)
 
-  function preUpdateMany(next) {
-    const session = this.getOptions().session
+  function preUpdateMany(this: any, next: any): void {
+    const session: any = this.getOptions().session
 
     this.model
       .find(this._conditions)
       .session(session)
-      .then((originals) => {
-        const originalIds = []
-        const originalData = []
+      .then((originals: any[]): void => {
+        const originalIds: any[] = []
+        const originalData: any[] = []
         for (const original of originals) {
           originalIds.push(original._id)
           originalData.push(toJSON(original.data()))
@@ -419,34 +450,36 @@ export default function (schema, opts) {
       .catch(next)
   }
 
-  function postUpdateMany(result, next) {
+  function postUpdateMany(this: any, result: any, next: any): any {
     // result might be a mongodb ModifyResult, null or a Document
     if (result?.lastErrorObject?.n === 0 && result?.upsertedCount === 0) {
       return next()
     }
 
-    let conditions
-    if (this._originalIds.length === 0) {
+    let conditions: any
+    if (this._originalIds && this._originalIds.length > 0) {
+      // Added check for this._originalIds
+      conditions = { _id: { $in: this._originalIds } }
+    } else {
       conditions = mergeQueryConditionsWithUpdate(
         this._conditions,
         this._update
       )
-    } else {
-      conditions = { _id: { $in: this._originalIds } }
     }
 
-    const session = this.getOptions().session
+    const session: any = this.getOptions().session
 
     this.model
       .find(conditions)
       .session(session)
-      .then((docs) =>
-        Promise.all(
-          docs.map((doc, i) => {
-            doc._original = this._originals[i]
-            return createPatch(doc, this.options)
-          })
-        )
+      .then(
+        (docs: any[]): Promise<any[]> =>
+          Promise.all(
+            docs.map((doc: any, i: number) => {
+              doc._original = this._originals[i]
+              return createPatch(doc, this.options)
+            })
+          )
       )
       .then(() => next())
       .catch(next)
@@ -455,14 +488,14 @@ export default function (schema, opts) {
   schema.pre('updateMany', preUpdateMany)
   schema.post('updateMany', postUpdateMany)
 
-  schema.pre('update', function (next) {
+  schema.pre('update', function (this: any, next: any): void {
     if (this.options.multi) {
       preUpdateMany.call(this, next)
     } else {
       preUpdateOne.call(this, next)
     }
   })
-  schema.post('update', function (result, next) {
+  schema.post('update', function (this: any, result: any, next: any): void {
     if (this.options.multi) {
       postUpdateMany.call(this, result, next)
     } else {
