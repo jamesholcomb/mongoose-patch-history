@@ -173,11 +173,11 @@ const mergeQueryConditionsWithUpdate = (
   return conditions
 }
 
-export default function (schema: any, opts: any): void {
-  const options: any = merge({}, defaultOptions, opts)
+export default function (schema: Schema, opts: any): void {
+  const options = merge({}, defaultOptions, opts)
 
   // get _id type from schema
-  options._idType = schema.tree._id.type
+  options._idType = schema.paths['_id'].options.type
 
   // transform excludes option
   options.excludes = options.excludes.map(getArrayFromPath)
@@ -190,16 +190,35 @@ export default function (schema: any, opts: any): void {
 
   // used to compare instance data snapshots. depopulates instance,
   // removes version key and object id
-  schema.methods.data = function (this: any): any {
+  schema.methods.data = function (this: any) {
     return this.toObject({
       depopulate: true,
       versionKey: false,
       transform: (doc: any, ret: any /*, options: any*/) => {
         delete ret._id
-        // if timestamps option is set on schema, ignore timestamp fields
-        if (schema.options.timestamps) {
-          delete ret[schema.options.timestamps.createdAt || 'createdAt']
-          delete ret[schema.options.timestamps.updatedAt || 'updatedAt']
+
+        // if timestamps option is set on schema, remove timestamp fields
+        const config = schema.get('timestamps')
+
+        if (config === true) {
+          delete ret.createdAt
+          delete ret.updatedAt
+        } else if (typeof config === 'object') {
+          if (config.createdAt) {
+            delete ret[
+              typeof config.createdAt === 'string'
+                ? config.createdAt
+                : 'createdAt'
+            ]
+          }
+
+          if (config.updatedAt) {
+            delete ret[
+              typeof config.updatedAt === 'string'
+                ? config.updatedAt
+                : 'updatedAt'
+            ]
+          }
         }
       }
     })
