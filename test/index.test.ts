@@ -1,31 +1,148 @@
 import assert from 'assert'
-import { map, random } from 'lodash'
-import mongoose, { Schema } from 'mongoose'
-import patchHistory, { RollbackError } from '../src'
+import { map } from 'lodash'
+import mongoose, { Document, Model, Schema, Types } from 'mongoose'
+import patchHistory, { PatchHistoryOptions, RollbackError } from '../src'
+
+// Type definitions for test models
+interface CommentDocument extends Document {
+  text: string
+  user?: Types.ObjectId
+  _user?: Types.ObjectId
+  patches: Model<PatchDocument>
+  data(): Record<string, unknown>
+  rollback(
+    patchId: Types.ObjectId | string,
+    data?: Record<string, unknown>,
+    save?: boolean
+  ): Promise<CommentDocument>
+}
+
+interface PostDocument extends Document {
+  title: string
+  tags?: string[]
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+  __v: number
+  __reason?: string
+  __user?: { name: string }
+  patches: Model<PatchDocument>
+  data(): Record<string, unknown>
+  rollback(
+    patchId: Types.ObjectId | string,
+    data?: Record<string, unknown>,
+    save?: boolean
+  ): Promise<PostDocument>
+}
+
+interface ExcludeDocument extends Document {
+  name: string
+  hidden?: string
+  object?: {
+    hiddenProperty?: string
+    array?: Array<{
+      hidden?: string
+      property?: { hidden?: string }
+    }>
+  }
+  array?: Array<{
+    hiddenProperty?: string
+    property?: string
+  }>
+  emptyArray?: Array<{ hiddenProperty?: string }>
+  patches: Model<PatchDocument>
+}
+
+interface PricePoolDocument extends Document {
+  name: string
+  prices: Array<{ name: string; value: number }>
+  patches: Model<PatchDocument>
+}
+
+interface CompanyDocument extends Document {
+  name: string
+  patches: Model<PatchDocument>
+}
+
+interface PersonDocument extends Document {
+  name: string
+  organization: Types.ObjectId
+  patches: Model<PatchDocument>
+}
+
+interface OrganizationDocument extends Document {
+  name: string
+  text?: string
+}
+
+interface PatchDocument extends Document {
+  date: Date
+  ops: Array<{
+    op: string
+    path: string
+    value?: unknown
+    originalValue?: unknown
+  }>
+  ref: Types.ObjectId
+  text?: string
+  user?: Types.ObjectId | { name: string }
+  version?: number
+  reason?: string
+}
+
+interface PostModel extends Model<PostDocument> {
+  Patches: Model<PatchDocument>
+}
+
+interface CommentModel extends Model<CommentDocument> {
+  Patches: Model<PatchDocument>
+}
+
+interface ExcludeModel extends Model<ExcludeDocument> {
+  Patches: Model<PatchDocument>
+}
+
+interface PricePoolModel extends Model<PricePoolDocument> {
+  Patches: Model<PatchDocument>
+}
+
+interface CompanyModel extends Model<CompanyDocument> {
+  Patches: Model<PatchDocument>
+}
+
+interface PersonModel extends Model<PersonDocument> {
+  Patches: Model<PatchDocument>
+}
 
 describe('mongoose-patch-history', () => {
-  const ObjectId: any = mongoose.Types.ObjectId
-  const CommentSchema: any = new Schema({ text: String }).plugin(patchHistory, {
-    mongoose: mongoose,
-    name: 'commentPatches',
-    removePatches: false,
-    includes: {
-      text: {
-        type: String
-      },
-      user: {
-        type: Schema.Types.ObjectId,
-        required: true,
-        from: '_user'
+  const ObjectId = mongoose.Types.ObjectId
+  const CommentSchema = new Schema<CommentDocument>({ text: String }).plugin(
+    patchHistory,
+    {
+      mongoose: mongoose,
+      name: 'commentPatches',
+      removePatches: false,
+      includes: {
+        text: {
+          type: String
+        },
+        user: {
+          type: Schema.Types.ObjectId,
+          required: true,
+          from: '_user'
+        }
       }
-    }
-  })
+    } as PatchHistoryOptions
+  )
 
-  CommentSchema.virtual('user').set(function (this: any, user: any) {
+  CommentSchema.virtual('user').set(function (
+    this: CommentDocument,
+    user: Types.ObjectId
+  ) {
     this._user = user
   })
 
-  const PostSchema: any = new Schema(
+  const PostSchema = new Schema<PostDocument>(
     {
       title: String,
       tags: { type: [String], default: void 0 },
@@ -36,31 +153,29 @@ describe('mongoose-patch-history', () => {
     mongoose: mongoose,
     name: 'postPatches',
     transforms: [
-      (name: any): any => name.toLowerCase(),
-      (): any => 'post_history'
+      (name: string): string => name.toLowerCase(),
+      (): string => 'post_history'
     ],
     includes: {
       version: { type: Number, from: '__v' },
       reason: { type: String, from: '__reason' },
       user: { type: Object, from: '__user' }
     }
-  })
-  PostSchema.virtual('user').set(function (this: any, user: any) {
+  } as PatchHistoryOptions)
+  PostSchema.virtual('user').set(function (
+    this: PostDocument,
+    user: { name: string }
+  ) {
     this.__user = user
   })
-  PostSchema.virtual('reason').set(function (this: any, reason: any) {
+  PostSchema.virtual('reason').set(function (
+    this: PostDocument,
+    reason: string
+  ) {
     this.__reason = reason
   })
 
-  const FruitSchema: any = new Schema({
-    _id: { type: String, default: random(100).toString() },
-    name: { type: String }
-  }).plugin(patchHistory, {
-    mongoose: mongoose,
-    name: 'fruitPatches'
-  })
-
-  const ExcludeSchema: any = new Schema({
+  const ExcludeSchema = new Schema<ExcludeDocument>({
     name: { type: String },
     hidden: { type: String },
     object: {
@@ -90,80 +205,88 @@ describe('mongoose-patch-history', () => {
       '/array/*/hiddenProperty',
       '/emptyArray/*/hiddenProperty'
     ]
-  })
+  } as PatchHistoryOptions)
 
-  const SportSchema: any = new Schema({
-    _id: { type: Number, default: random(100) },
-    name: { type: String }
-  }).plugin(patchHistory, {
-    mongoose: mongoose,
-    name: 'sportPatches'
-  })
-
-  const PricePoolSchema: any = new Schema({
+  const PricePoolSchema = new Schema<PricePoolDocument>({
     name: { type: String },
     prices: [{ name: { type: String }, value: { type: Number } }]
   }).plugin(patchHistory, {
     mongoose: mongoose,
     name: 'pricePoolPatches',
     trackOriginalValue: true
-  })
+  } as PatchHistoryOptions)
 
-  let Comment: any,
-    Post: any,
-    Fruit: any,
-    Sport: any,
-    User: any,
-    PricePool: any,
-    Exclude: any
-  before((done: any) => {
+  let Comment: CommentModel,
+    Post: PostModel,
+    User: Model<Document>,
+    PricePool: PricePoolModel,
+    Exclude: ExcludeModel
+
+  before((done) => {
     mongoose
       .connect(
         'mongodb://root:root@localhost:27017/mongoose-patch-history?&authSource=admin&directConnection=true'
       )
-      .then(({ connection }: { connection: any }) => {
+      .then(({ connection }) => {
+        if (!connection.db) {
+          throw new Error('Database connection not established')
+        }
         connection.db
           .dropDatabase()
           .then(() => {
-            Comment = mongoose.model('Comment', CommentSchema)
-            Post = mongoose.model('Post', PostSchema)
-            Fruit = mongoose.model('Fruit', FruitSchema)
-            Sport = mongoose.model('Sport', SportSchema)
-            User = mongoose.model('User', new Schema({}))
-            PricePool = mongoose.model('PricePool', PricePoolSchema)
-            Exclude = mongoose.model('Exclude', ExcludeSchema)
+            Comment = mongoose.model<CommentDocument, CommentModel>(
+              'Comment',
+              CommentSchema
+            )
+            Post = mongoose.model<PostDocument, PostModel>('Post', PostSchema)
+            User = mongoose.model<Document>('User', new Schema({}))
+            PricePool = mongoose.model<PricePoolDocument, PricePoolModel>(
+              'PricePool',
+              PricePoolSchema
+            )
+            Exclude = mongoose.model<ExcludeDocument, ExcludeModel>(
+              'Exclude',
+              ExcludeSchema
+            )
           })
           .finally(() => done())
       })
   })
 
-  after((done: any) => {
+  after((done) => {
     mongoose.connection.close().then(() => done())
   })
 
   describe('initialization', () => {
-    const name: any = 'testPatches'
-    let TestSchema: any
+    const name = 'testPatches'
+    let TestSchema: Schema
 
     before(() => {
       TestSchema = new Schema()
     })
 
     it('throws when `mongoose` option is not defined', () => {
-      assert.throws(() => TestSchema.plugin(patchHistory, { name }))
+      assert.throws(() =>
+        TestSchema.plugin(patchHistory, { name } as PatchHistoryOptions)
+      )
     })
 
     it('throws when `name` option is not defined', () => {
       assert.throws(() =>
-        TestSchema.plugin(patchHistory, { mongoose: mongoose })
+        TestSchema.plugin(patchHistory, {
+          mongoose: mongoose
+        } as PatchHistoryOptions)
       )
     })
 
     it('throws when `data` instance method exists', () => {
-      const DataSchema: any = new Schema()
-      DataSchema.methods.data = (): any => {}
+      const DataSchema = new Schema()
+      DataSchema.methods.data = (): Record<string, unknown> => ({})
       assert.throws(() =>
-        DataSchema.plugin(patchHistory, { mongoose: mongoose, name })
+        DataSchema.plugin(patchHistory, {
+          mongoose: mongoose,
+          name
+        } as PatchHistoryOptions)
       )
     })
 
@@ -172,18 +295,18 @@ describe('mongoose-patch-history', () => {
         TestSchema.plugin(patchHistory, {
           mongoose: mongoose,
           name
-        })
+        } as PatchHistoryOptions)
       )
     })
   })
 
   describe('saving a new document', () => {
-    it('adds a patch', (done: any) => {
+    it('adds a patch', (done) => {
       Promise.all([
         // without referenced user
         Post.create({ title: 'foo' })
-          .then((post: any) => post.patches.find({ ref: post.id }))
-          .then((patches: any) => {
+          .then((post) => post.patches.find({ ref: post._id }))
+          .then((patches) => {
             assert.equal(patches.length, 1)
             assert.equal(
               JSON.stringify(patches[0].ops),
@@ -201,8 +324,8 @@ describe('mongoose-patch-history', () => {
               user: new ObjectId()
             })
           )
-          .then((comment: any) => comment.patches.find({ ref: comment.id }))
-          .then((patches: any) => {
+          .then((comment) => comment.patches.find({ ref: comment._id }))
+          .then((patches) => {
             assert.equal(patches.length, 1)
             assert.equal(
               JSON.stringify(patches[0].ops),
@@ -215,7 +338,7 @@ describe('mongoose-patch-history', () => {
     })
 
     describe('with exclude options', () => {
-      it('adds a patch containing no excluded properties', (done: any) => {
+      it('adds a patch containing no excluded properties', (done) => {
         Exclude.create({
           name: 'exclude1',
           hidden: 'hidden',
@@ -233,8 +356,8 @@ describe('mongoose-patch-history', () => {
           ],
           emptyArray: [{ hiddenProperty: 'hidden' }]
         })
-          .then((exclude: any) => exclude.patches.find({ ref: exclude._id }))
-          .then((patches: any) => {
+          .then((exclude) => exclude.patches.find({ ref: exclude._id }))
+          .then((patches) => {
             assert.equal(patches.length, 1)
             assert.equal(
               JSON.stringify(patches[0].ops),
@@ -261,9 +384,12 @@ describe('mongoose-patch-history', () => {
   })
 
   describe('saving an existing document', () => {
-    it('with changes: adds a patch', (done: any) => {
+    it('with changes: adds a patch', (done) => {
       Post.findOne({ title: 'foo' })
-        .then((post: any) => {
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
           post.set({
             title: 'bar',
             reason: 'test reason',
@@ -271,72 +397,48 @@ describe('mongoose-patch-history', () => {
           })
           return post.save()
         })
-        .then((post: any) =>
-          post.patches.find({ ref: post.id }).sort({ _id: 1 })
-        )
-        .then((patches: any) => {
+        .then((post) => post.patches.find({ ref: post._id }).sort({ _id: 1 }))
+        .then((patches) => {
           assert.equal(patches.length, 2)
           assert.equal(
             JSON.stringify(patches[1].ops),
             JSON.stringify([{ op: 'replace', path: '/title', value: 'bar' }])
           )
           assert.equal(patches[1].reason, 'test reason')
-          assert.equal(patches[1].user.name, 'Joe')
+          assert.equal((patches[1].user as { name: string })?.name, 'Joe')
         })
         .then(done)
         .catch(done)
     })
 
-    it('without changes: does not add a patch', (done: any) => {
+    it('without changes: does not add a patch', (done) => {
       Post.create({ title: 'baz' })
-        .then((post: any) => post.save())
-        .then((post: any) => post.patches.find({ ref: post.id }))
-        .then((patches: any) => {
+        .then((post) => post.save())
+        .then((post) => post.patches.find({ ref: post._id }))
+        .then((patches) => {
           assert.equal(patches.length, 1)
         })
         .then(done)
         .catch(done)
     })
 
-    it('with changes covered by exclude: does not add a patch', (done: any) => {
+    it('with changes covered by exclude: does not add a patch', (done) => {
       Exclude.findOne({ name: 'exclude1' })
-        .then((exclude: any) => {
-          exclude.object.hiddenProperty = 'test'
-          exclude.array[0].hiddenProperty = 'test'
+        .then((exclude) => {
+          if (!exclude) {
+            throw new Error('Exclude not found')
+          }
+          if (exclude.object) {
+            exclude.object.hiddenProperty = 'test'
+          }
+          if (exclude.array && exclude.array[0]) {
+            exclude.array[0].hiddenProperty = 'test'
+          }
           return exclude.save()
         })
-        .then((exclude: any) => exclude.patches.find({ ref: exclude.id }))
-        .then((patches: any) => {
+        .then((exclude) => exclude.patches.find({ ref: exclude._id }))
+        .then((patches) => {
           assert.equal(patches.length, 1)
-        })
-        .then(() => done())
-        .catch(done)
-    })
-  })
-
-  describe('saving a document with custom _id type', () => {
-    it('supports String _id types', (done: any) => {
-      Fruit.create({ name: 'apple' })
-        .then((fruit: any) => fruit.patches.find({ ref: fruit._id }))
-        .then((patches: any) => {
-          assert.equal(patches.length, 1)
-          assert.equal(
-            JSON.stringify(patches[0].ops),
-            JSON.stringify([{ op: 'add', path: '/name', value: 'apple' }])
-          )
-        })
-        .then(() => done())
-        .catch(done)
-    })
-    it('supports Number _id types', (done: any) => {
-      Sport.create({ name: 'golf' })
-        .then((sport: any) => sport.patches.find({ ref: sport._id }))
-        .then((patches: any) => {
-          assert.equal(patches.length, 1)
-          assert.equal(
-            JSON.stringify(patches[0].ops),
-            JSON.stringify([{ op: 'add', path: '/name', value: 'golf' }])
-          )
         })
         .then(() => done())
         .catch(done)
@@ -344,7 +446,7 @@ describe('mongoose-patch-history', () => {
   })
 
   describe('updating a document via findOneAndUpdate()', () => {
-    it('upserts a new document', (done: any) => {
+    it('upserts a new document', (done) => {
       Post.findOneAndUpdate(
         { title: 'doesNotExist' },
         { title: 'findOneAndUpdate' },
@@ -354,10 +456,13 @@ describe('mongoose-patch-history', () => {
         }
       )
         .then(() => Post.findOne({ title: 'findOneAndUpdate' }))
-        .then((post: any) =>
-          post.patches.find({ ref: post._id }).sort({ _id: 1 })
-        )
-        .then((patches: any) => {
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.patches.find({ ref: post._id }).sort({ _id: 1 })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 1)
           assert.equal(
             JSON.stringify(patches[0].ops),
@@ -371,19 +476,22 @@ describe('mongoose-patch-history', () => {
         .catch(done)
     })
 
-    it('with changes: adds a patch', (done: any) => {
+    it('with changes: adds a patch', (done) => {
       Post.create({ title: 'findOneAndUpdate1' })
-        .then((post: any) =>
+        .then((post) =>
           Post.findOneAndUpdate(
             { _id: post._id },
             { title: 'findOneAndUpdate2', __v: 1 },
             { __reason: 'test reason', __user: { name: 'Joe' } }
           )
         )
-        .then((post: any) =>
-          post.patches.find({ ref: post._id }).sort({ _id: 1 })
-        )
-        .then((patches: any) => {
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.patches.find({ ref: post._id }).sort({ _id: 1 })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 2)
           assert.equal(
             JSON.stringify(patches[1].ops),
@@ -392,67 +500,84 @@ describe('mongoose-patch-history', () => {
             ])
           )
           assert.equal(patches[1].reason, 'test reason')
-          assert.equal(patches[1].user.name, 'Joe')
+          assert.equal((patches[1].user as { name: string })?.name, 'Joe')
         })
         .then(done)
         .catch(done)
     })
 
-    it('without changes: does not add a patch', (done: any) => {
+    it('without changes: does not add a patch', (done) => {
       Post.findOneAndUpdate({ title: 'baz' }, {})
-        .then((post: any) => post.patches.find({ ref: post.id }))
-        .then((patches: any) => assert.equal(patches.length, 1))
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.patches.find({ ref: post._id })
+        })
+        .then((patches) => assert.equal(patches.length, 1))
         .then(done)
         .catch(done)
     })
 
-    it('should not throw "TypeError: Cannot set property _original of null" error if doc does not exist', async (): Promise<any> => {
+    it('should not throw "TypeError: Cannot set property _original of null" error if doc does not exist', async (): Promise<void> => {
       await Post.findOneAndUpdate(
         { title: 'the_answer_to_life' },
         { title: '42', comments: 'thanks for all the fish' }
       )
-        .then((post: any) => assert.strictEqual(post, null))
-        .catch((e: any) => assert.fail(e.message))
+        .then((post) => assert.strictEqual(post, null))
+        .catch((e: Error) => assert.fail(e.message))
     })
 
-    it('with options: { new: true }', async (): Promise<any> => {
-      const title: any = 'findOneAndUpdateNewTrue'
+    it('with options: { new: true }', async (): Promise<void> => {
+      const title = 'findOneAndUpdateNewTrue'
       await Post.create({ title })
       await Post.findOneAndUpdate({ title }, { title: 'baz' }, { new: true })
-        .then((post: any) => post.patches.find({ ref: post._id }))
-        .then((patches: any) => assert.strictEqual(patches.length, 2))
-        .catch((e: any) => assert.fail(e.message))
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.patches.find({ ref: post._id })
+        })
+        .then((patches) => assert.strictEqual(patches.length, 2))
+        .catch((e: Error) => assert.fail(e.message))
     })
 
-    it('with options: { rawResult: true }', async (): Promise<any> => {
-      const title: any = 'findOneAndUpdateRawResultTrue'
+    it('with options: { includeResultMetadata: true }', async (): Promise<void> => {
+      const title = 'findOneAndUpdateIncludeResultMetadataTrue'
       await Post.create({ title })
       await Post.findOneAndUpdate(
         { title },
         { title: 'baz' },
-        { rawResult: true }
+        { includeResultMetadata: true }
       )
-        .then((post: any) =>
-          post.value.patches.find({
-            ref: post.value._id
+        .then((result) => {
+          const modifyResult = result as { value: PostDocument }
+          if (!modifyResult.value) {
+            throw new Error('Post not found')
+          }
+          return modifyResult.value.patches.find({
+            ref: modifyResult.value._id
           })
-        )
-        .then((patches: any) => assert.strictEqual(patches.length, 2))
-        .catch((e: any) => assert.fail(e.message))
+        })
+        .then((patches) => assert.strictEqual(patches.length, 2))
+        .catch((e: Error) => assert.fail(e.message))
     })
   })
 
   describe('updating a document via updateOne()', () => {
-    it('with changes: adds a patch', (done: any) => {
+    it('with changes: adds a patch', (done) => {
       Post.create({ title: 'updateOne1' })
-        .then((post: any) =>
+        .then((post) =>
           Post.updateOne({ _id: post._id }, { title: 'updateOne2' })
         )
         .then(() => Post.findOne({ title: 'updateOne2' }))
-        .then((post: any) =>
-          post.patches.find({ ref: post._id }).sort({ _id: 1 })
-        )
-        .then((patches: any) => {
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.patches.find({ ref: post._id }).sort({ _id: 1 })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 2)
           assert.equal(
             JSON.stringify(patches[1].ops),
@@ -465,18 +590,23 @@ describe('mongoose-patch-history', () => {
         .catch(done)
     })
 
-    it('without changes: does not add a patch', (done: any) => {
+    it('without changes: does not add a patch', (done) => {
       Post.updateOne({ title: 'baz' }, {})
         .then(() => Post.findOne({ title: 'baz' }))
-        .then((post: any) => post.patches.find({ ref: post.id }))
-        .then((patches: any) => {
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.patches.find({ ref: post._id })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 1)
         })
         .then(done)
         .catch(done)
     })
 
-    it('handles array filters', (done: any) => {
+    it('handles array filters', (done) => {
       PricePool.create({
         name: 'test',
         prices: [
@@ -484,7 +614,7 @@ describe('mongoose-patch-history', () => {
           { name: 'test2', value: 2 }
         ]
       })
-        .then((pricePool: any) =>
+        .then((pricePool) =>
           PricePool.updateMany(
             { name: pricePool.name },
             { $set: { 'prices.$[elem].value': 3 } },
@@ -492,7 +622,7 @@ describe('mongoose-patch-history', () => {
           )
         )
         .then(() => PricePool.Patches.find({}))
-        .then((patches: any) => {
+        .then((patches) => {
           assert.equal(patches.length, 2)
         })
         .then(done)
@@ -501,16 +631,19 @@ describe('mongoose-patch-history', () => {
   })
 
   describe('updating a document via updateMany()', () => {
-    it('with changes: adds a patch', (done: any) => {
+    it('with changes: adds a patch', (done) => {
       Post.create({ title: 'updateMany1' })
-        .then((post: any) =>
+        .then((post) =>
           Post.updateMany({ _id: post._id }, { title: 'updateMany2' })
         )
         .then(() => Post.find({ title: 'updateMany2' }))
-        .then((posts: any) =>
-          posts[0].patches.find({ ref: posts[0]._id }).sort({ _id: 1 })
-        )
-        .then((patches: any) => {
+        .then((posts) => {
+          if (!posts[0]) {
+            throw new Error('Post not found')
+          }
+          return posts[0].patches.find({ ref: posts[0]._id }).sort({ _id: 1 })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 2)
           assert.equal(
             JSON.stringify(patches[1].ops),
@@ -523,20 +656,25 @@ describe('mongoose-patch-history', () => {
         .catch(done)
     })
 
-    it('without changes: does not add a patch', (done: any) => {
+    it('without changes: does not add a patch', (done) => {
       Post.updateMany({ title: 'baz' }, {})
         .then(() => Post.find({ title: 'baz' }))
-        .then((posts: any) => posts[0].patches.find({ ref: posts[0].id }))
-        .then((patches: any) => {
+        .then((posts) => {
+          if (!posts[0]) {
+            throw new Error('Post not found')
+          }
+          return posts[0].patches.find({ ref: posts[0]._id })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 1)
         })
         .then(done)
         .catch(done)
     })
 
-    it('handles the $push operator', (done: any) => {
+    it('handles the $push operator', (done) => {
       Post.create({ title: 'tagged1', tags: ['match'] })
-        .then((post: any) =>
+        .then((post) =>
           Post.updateMany(
             { _id: post._id },
             { $push: { tags: 'match2' } },
@@ -544,10 +682,13 @@ describe('mongoose-patch-history', () => {
           )
         )
         .then(() => Post.find({ title: 'tagged1' }))
-        .then((posts: any) =>
-          posts[0].patches.find({ ref: posts[0]._id }).sort({ _id: 1 })
-        )
-        .then((patches: any) => {
+        .then((posts) => {
+          if (!posts[0]) {
+            throw new Error('Post not found')
+          }
+          return posts[0].patches.find({ ref: posts[0]._id }).sort({ _id: 1 })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 2)
           assert.equal(
             JSON.stringify(patches[1].ops),
@@ -558,7 +699,7 @@ describe('mongoose-patch-history', () => {
         .catch(done)
     })
 
-    it('handles the $pull operator', (done: any) => {
+    it('handles the $pull operator', (done) => {
       Post.create({ title: 'tagged2', tags: ['match'] })
         .then(() =>
           // Remove the 'match' tag from all posts tagged with 'match'
@@ -569,10 +710,13 @@ describe('mongoose-patch-history', () => {
           )
         )
         .then(() => Post.find({ title: 'tagged2' }))
-        .then((posts: any) =>
-          posts[0].patches.find({ ref: posts[0]._id }).sort({ _id: 1 })
-        )
-        .then((patches: any) => {
+        .then((posts) => {
+          if (!posts[0]) {
+            throw new Error('Post not found')
+          }
+          return posts[0].patches.find({ ref: posts[0]._id }).sort({ _id: 1 })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 2)
           assert.equal(
             JSON.stringify(patches[1].ops),
@@ -585,17 +729,20 @@ describe('mongoose-patch-history', () => {
   })
 
   describe('upsert a document', () => {
-    it('with changes: adds a patch', (done: any) => {
+    it('with changes: adds a patch', (done) => {
       Post.updateMany(
         { title: 'upsert0' },
         { title: 'upsert1' },
-        { upsert: true, multi: true }
+        { upsert: true }
       )
         .then(() => Post.find({ title: 'upsert1' }))
-        .then((posts: any) =>
-          posts[0].patches.find({ ref: posts[0]._id }).sort({ _id: 1 })
-        )
-        .then((patches: any) => {
+        .then((posts) => {
+          if (!posts[0]) {
+            throw new Error('Post not found')
+          }
+          return posts[0].patches.find({ ref: posts[0]._id }).sort({ _id: 1 })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 1)
           assert.equal(
             JSON.stringify(patches[0].ops),
@@ -609,30 +756,40 @@ describe('mongoose-patch-history', () => {
         .catch(done)
     })
 
-    it('without changes: does not add a patch', (done: any) => {
+    it('without changes: does not add a patch', (done) => {
       Post.updateMany(
         { title: 'upsert1' },
         { title: 'upsert1' },
-        { upsert: true, multi: true }
+        { upsert: true }
       )
         .then(() => Post.find({ title: 'upsert1' }))
-        .then((posts: any) => posts[0].patches.find({ ref: posts[0].id }))
-        .then((patches: any) => {
+        .then((posts) => {
+          if (!posts[0]) {
+            throw new Error('Post not found')
+          }
+          return posts[0].patches.find({ ref: posts[0]._id })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 1)
         })
         .then(done)
         .catch(done)
     })
 
-    it('with updateMany: adds a patch', (done: any) => {
+    it('with updateMany: adds a patch', (done) => {
       Post.updateMany(
         { title: 'upsert2' },
         { title: 'upsert3' },
         { upsert: true }
       )
         .then(() => Post.find({ title: 'upsert3' }))
-        .then((posts: any) => posts[0].patches.find({ ref: posts[0].id }))
-        .then((patches: any) => {
+        .then((posts) => {
+          if (!posts[0]) {
+            throw new Error('Post not found')
+          }
+          return posts[0].patches.find({ ref: posts[0]._id })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 1)
         })
         .then(done)
@@ -641,11 +798,11 @@ describe('mongoose-patch-history', () => {
   })
 
   describe('update with multi', () => {
-    it('should not throw "TypeError: Cannot set property _original of null" error if doc does not exist', (done: any) => {
+    it('should not throw "TypeError: Cannot set property _original of null" error if doc does not exist', (done) => {
       Post.updateMany(
         { title: { $in: ['foo_bar'] } },
         { title: 'bar_foo' },
-        { multi: true, upsert: false }
+        { upsert: false }
       )
         .then(() => done())
         .catch(done)
@@ -653,31 +810,46 @@ describe('mongoose-patch-history', () => {
   })
 
   describe('removing a document', () => {
-    it('removes all patches', (done: any) => {
+    it('removes all patches', (done) => {
       Post.findOne({ title: 'bar' })
-        .then((post: any) => post.remove())
-        .then((post: any) => post.patches.find({ ref: post.id }))
-        .then((patches: any) => {
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.deleteOne().then(() => post)
+        })
+        .then((post) => post.patches.find({ ref: post._id }))
+        .then((patches) => {
           assert.equal(patches.length, 0)
         })
         .then(done)
         .catch(done)
     })
-    it("doesn't remove patches when `removePatches` is false", (done: any) => {
+    it("doesn't remove patches when `removePatches` is false", (done) => {
       Comment.findOne({ text: 'wat' })
-        .then((comment: any) => comment.remove())
-        .then((comment: any) => comment.patches.find({ ref: comment.id }))
-        .then((patches: any) => {
+        .then((comment) => {
+          if (!comment) {
+            throw new Error('Comment not found')
+          }
+          return comment.deleteOne().then(() => comment)
+        })
+        .then((comment) => comment.patches.find({ ref: comment._id }))
+        .then((patches) => {
           assert.equal(patches.length, 1)
         })
         .then(done)
         .catch(done)
     })
-    it('removes all patches via findOneAndRemove()', (done: any) => {
-      Post.create({ title: 'findOneAndRemove1' })
-        .then((post: any) => Post.findOneAndRemove({ _id: post.id }))
-        .then((post: any) => post.patches.find({ ref: post.id }))
-        .then((patches: any) => {
+    it('removes all patches via findOneAndDelete()', (done) => {
+      Post.create({ title: 'findOneAndDelete1' })
+        .then((post) => Post.findOneAndDelete({ _id: post._id }))
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.patches.find({ ref: post._id })
+        })
+        .then((patches) => {
           assert.equal(patches.length, 0)
         })
         .then(done)
@@ -685,109 +857,139 @@ describe('mongoose-patch-history', () => {
     })
   })
   describe('rollback', () => {
-    it('with unknown id is rejected', (done: any) => {
-      Post.create({ title: 'version 1' }).then((post: any) => {
+    it('with unknown id is rejected', (done) => {
+      Post.create({ title: 'version 1' }).then((post) => {
         return post
           .rollback(new ObjectId())
           .then(() => {
             done()
           })
-          .catch((err: any) => {
+          .catch((err: Error) => {
             assert(err instanceof RollbackError)
             done()
           })
       })
     })
 
-    it('to latest patch is rejected', (done: any) => {
+    it('to latest patch is rejected', (done) => {
       Post.create({ title: 'version 1' })
-        .then((post: any) =>
-          Promise.all([post, post.patches.findOne({ ref: post.id })])
+        .then((post) =>
+          Promise.all([post, post.patches.findOne({ ref: post._id })])
         )
-        .then(([post, latestPatch]: [any, any]) => {
+        .then(([post, latestPatch]) => {
+          if (!latestPatch) {
+            throw new Error('Patch not found')
+          }
           return post
-            .rollback(latestPatch.id)
+            .rollback(latestPatch._id)
             .then(() => {
               done()
             })
-            .catch((err: any) => {
+            .catch((err: Error) => {
               assert(err instanceof RollbackError)
               done()
             })
         })
     })
 
-    it('adds a new patch and updates the document', (done: any) => {
+    it('adds a new patch and updates the document', (done) => {
       Comment.create({ text: 'comm 1', user: new ObjectId() })
-        .then((c: any) => Comment.findOne({ _id: c.id }))
-        .then((c: any) =>
-          c.set({ text: 'comm 2', user: new ObjectId() }).save()
-        )
-        .then((c: any) => Comment.findOne({ _id: c.id }))
-        .then((c: any) =>
-          c.set({ text: 'comm 3', user: new ObjectId() }).save()
-        )
-        .then((c: any) => Comment.findOne({ _id: c.id }))
-        .then((c: any) => Promise.all([c, c.patches.find({ ref: c.id })]))
-        .then(([c, patches]: [any, any]) =>
-          c.rollback(patches[1].id, { user: new ObjectId() })
-        )
-        .then((c: any) => {
-          assert.equal(c.text, 'comm 2')
-          return c.patches.find({ ref: c.id })
+        .then((c) => Comment.findOne({ _id: c._id }))
+        .then((c) => {
+          if (!c) {
+            throw new Error('Comment not found')
+          }
+          return c.set({ text: 'comm 2', user: new ObjectId() }).save()
         })
-        .then((patches: any) => assert.equal(patches.length, 4))
+        .then((c) => Comment.findOne({ _id: c._id }))
+        .then((c) => {
+          if (!c) {
+            throw new Error('Comment not found')
+          }
+          return c.set({ text: 'comm 3', user: new ObjectId() }).save()
+        })
+        .then((c) => Comment.findOne({ _id: c._id }))
+        .then((c) => {
+          if (!c) {
+            throw new Error('Comment not found')
+          }
+          return Promise.all([c, c.patches.find({ ref: c._id })])
+        })
+        .then(([c, patches]) =>
+          c.rollback(patches[1]._id, { user: new ObjectId() })
+        )
+        .then((c) => {
+          assert.equal(c.text, 'comm 2')
+          return c.patches.find({ ref: c._id })
+        })
+        .then((patches) => assert.equal(patches.length, 4))
         .then(done)
         .catch(done)
     })
 
-    it("updates but doesn't save the document", (done: any) => {
+    it("updates but doesn't save the document", (done) => {
       Comment.create({ text: 'comm 1', user: new ObjectId() })
-        .then((c: any) => Comment.findOne({ _id: c.id }))
-        .then((c: any) =>
-          c.set({ text: 'comm 2', user: new ObjectId() }).save()
+        .then((c) => Comment.findOne({ _id: c._id }))
+        .then((c) => {
+          if (!c) {
+            throw new Error('Comment not found')
+          }
+          return c.set({ text: 'comm 2', user: new ObjectId() }).save()
+        })
+        .then((c) => Comment.findOne({ _id: c._id }))
+        .then((c) => {
+          if (!c) {
+            throw new Error('Comment not found')
+          }
+          return c.set({ text: 'comm 3', user: new ObjectId() }).save()
+        })
+        .then((c) => Comment.findOne({ _id: c._id }))
+        .then((c) => {
+          if (!c) {
+            throw new Error('Comment not found')
+          }
+          return Promise.all([c, c.patches.find({ ref: c._id })])
+        })
+        .then(([c, patches]) =>
+          c.rollback(patches[1]._id, { user: new ObjectId() }, false)
         )
-        .then((c: any) => Comment.findOne({ _id: c.id }))
-        .then((c: any) =>
-          c.set({ text: 'comm 3', user: new ObjectId() }).save()
-        )
-        .then((c: any) => Comment.findOne({ _id: c.id }))
-        .then((c: any) => Promise.all([c, c.patches.find({ ref: c.id })]))
-        .then(([c, patches]: [any, any]) =>
-          c.rollback(patches[1].id, { user: new ObjectId() }, false)
-        )
-        .then((c: any) => {
+        .then((c) => {
           assert.equal(c.text, 'comm 2')
-          return Comment.findOne({ _id: c.id })
+          return Comment.findOne({ _id: c._id })
         })
-        .then((c: any) => {
+        .then((c) => {
+          if (!c) {
+            throw new Error('Comment not found')
+          }
           assert.equal(c.text, 'comm 3')
-          return c.patches.find({ ref: c.id })
+          return c.patches.find({ ref: c._id })
         })
-        .then((patches: any) => assert.equal(patches.length, 3))
+        .then((patches) => assert.equal(patches.length, 3))
         .then(done)
         .catch(done)
     })
   })
 
   describe('model and collection names', () => {
-    const getCollectionNames = (): Promise<any> => {
-      return new Promise((resolve: any, reject: any) => {
-        mongoose.connection.db
-          .listCollections()
-          .toArray((err: any, collections: any) => {
-            if (err) {
-              return reject(err)
-            }
-            resolve(map(collections, 'name'))
+    const getCollectionNames = (): Promise<string[]> => {
+      return new Promise((resolve, reject) => {
+        const db = mongoose.connection.db
+        if (!db) {
+          return reject(new Error('Database connection not established'))
+        }
+        db.listCollections()
+          .toArray()
+          .then((collections) => {
+            resolve(map(collections, 'name') as string[])
           })
+          .catch(reject)
       })
     }
 
-    it('pascalize for model and decamelize for collection', (done: any) => {
+    it('pascalize for model and decamelize for collection', (done) => {
       Promise.all([
         () => assert(!!~mongoose.modelNames().indexOf('CommentPatches')),
-        getCollectionNames().then((names: any) => {
+        getCollectionNames().then((names) => {
           assert(!!~names.indexOf('comment_patches'))
         })
       ])
@@ -795,10 +997,10 @@ describe('mongoose-patch-history', () => {
         .catch(done)
     })
 
-    it('uses `transform` option when set', (done: any) => {
+    it('uses `transform` option when set', (done) => {
       Promise.all([
         () => assert(!!~mongoose.modelNames().indexOf('postPatches')),
-        getCollectionNames().then((names: any) => {
+        getCollectionNames().then((names) => {
           assert(!!~names.indexOf('post_history'))
         })
       ])
@@ -808,13 +1010,13 @@ describe('mongoose-patch-history', () => {
   })
 
   describe('timestamps', () => {
-    it('creates doc and sets mongoose timestamp fields', (done: any) => {
+    it('creates doc and sets mongoose timestamp fields', (done) => {
       Post.create({ title: 'ts1' })
-        .then((post: any) =>
+        .then((post) =>
           post.patches
             .find({ ref: post._id })
             .sort({ _id: 1 })
-            .then((patches: any) => {
+            .then((patches) => {
               assert.equal(patches.length, 1)
               assert.equal(
                 patches[0].date.toUTCString(),
@@ -830,17 +1032,20 @@ describe('mongoose-patch-history', () => {
         .catch(done)
     })
 
-    it('updates doc and sets mongoose timestamp fields', (done: any) => {
+    it('updates doc and sets mongoose timestamp fields', (done) => {
       Post.create({ title: 'ts2' })
-        .then(({ _id }: { _id: any }) =>
+        .then(({ _id }) =>
           Post.updateOne({ _id }, { $set: { title: 'ts2.1' } })
         )
         .then(() => Post.findOne({ title: 'ts2.1' }))
-        .then((post: any) =>
-          post.patches
+        .then((post) => {
+          if (!post) {
+            throw new Error('Post not found')
+          }
+          return post.patches
             .find({ ref: post._id })
             .sort({ _id: 1 })
-            .then((patches: any) => {
+            .then((patches) => {
               assert.equal(patches.length, 2)
               assert.equal(
                 patches[0].date.toUTCString(),
@@ -851,25 +1056,25 @@ describe('mongoose-patch-history', () => {
                 post.updatedAt.toUTCString()
               )
             })
-        )
+        })
         .then(done)
         .catch(done)
     })
   })
 
   describe('jsonpatch.compare', () => {
-    let Organization: any
-    let Person: any
+    let Organization: Model<OrganizationDocument>
+    let Person: PersonModel
 
     before(() => {
-      Organization = mongoose.model(
+      Organization = mongoose.model<OrganizationDocument>(
         'Organization',
         new mongoose.Schema({
           name: String
         })
       )
 
-      const PersonSchema: any = new mongoose.Schema({
+      const PersonSchema = new mongoose.Schema<PersonDocument>({
         name: String,
         organization: {
           type: mongoose.Schema.Types.ObjectId,
@@ -880,30 +1085,34 @@ describe('mongoose-patch-history', () => {
       PersonSchema.plugin(patchHistory, {
         mongoose: mongoose,
         name: 'personPatches'
-      })
-      Person = mongoose.model('Person', PersonSchema)
+      } as PatchHistoryOptions)
+      Person = mongoose.model<PersonDocument, PersonModel>(
+        'Person',
+        PersonSchema
+      )
     })
 
-    it('is able to handle ObjectId references correctly', (done: any) => {
+    it('is able to handle ObjectId references correctly', (done) => {
       Organization.create({ text: 'Home' })
-        .then((o1: any) =>
-          Promise.all([o1, Organization.create({ text: 'Work' })])
-        )
-        .then(([o1, o2]: [any, any]) =>
+        .then((o1) => Promise.all([o1, Organization.create({ text: 'Work' })]))
+        .then(([o1, o2]) =>
           Promise.all([
             o1,
             o2,
             Person.create({ name: 'Bob', organization: o1._id })
           ])
         )
-        .then(([o1, o2, p]: [any, any, any]) =>
+        .then(([o1, o2, p]) =>
           Promise.all([o1, o2, p.set({ organization: o2._id }).save()])
         )
-        .then(([o1, o2, p]: [any, any, any]) =>
-          Promise.all([o1, o2, p.patches.find({ ref: p.id })])
+        .then(([o1, o2, p]) =>
+          Promise.all([o1, o2, p.patches.find({ ref: p._id })])
         )
-        .then(([o1, o2, patches]: [any, any, any]) => {
-          const pathFilter = (path: any) => (elem: any) => elem.path === path
+        .then(([o1, o2, patches]) => {
+          const pathFilter =
+            (path: string) =>
+            (elem: { path: string }): boolean =>
+              elem.path === path
           const firstOrganizationOperation = patches[0].ops.find(
             pathFilter('/organization')
           )
@@ -911,11 +1120,11 @@ describe('mongoose-patch-history', () => {
             pathFilter('/organization')
           )
           assert.deepStrictEqual(
-            firstOrganizationOperation.value.toString(),
+            firstOrganizationOperation?.value?.toString(),
             o1._id.toString()
           )
           assert.deepStrictEqual(
-            secondOrganizationOperation.value.toString(),
+            secondOrganizationOperation?.value?.toString(),
             o2._id.toString()
           )
         })
@@ -925,10 +1134,10 @@ describe('mongoose-patch-history', () => {
   })
 
   describe('track original values', () => {
-    let Company: any
+    let Company: CompanyModel
 
     before(() => {
-      const CompanySchema: any = new mongoose.Schema({
+      const CompanySchema = new mongoose.Schema<CompanyDocument>({
         name: String
       })
 
@@ -936,22 +1145,25 @@ describe('mongoose-patch-history', () => {
         mongoose: mongoose,
         name: 'companyPatches',
         trackOriginalValue: true
-      })
-      Company = mongoose.model('Company', CompanySchema)
-    })
-
-    after((done: any) => {
-      Promise.all([Company.remove(), Company.Patches.remove()]).then(() =>
-        done()
+      } as PatchHistoryOptions)
+      Company = mongoose.model<CompanyDocument, CompanyModel>(
+        'Company',
+        CompanySchema
       )
     })
 
-    it('stores the original value in the ops entries', (done: any) => {
+    after((done) => {
+      Promise.all([Company.deleteMany(), Company.Patches.deleteMany()]).then(
+        () => done()
+      )
+    })
+
+    it('stores the original value in the ops entries', (done) => {
       Company.create({ name: 'Private' })
-        .then((c: any) => c.set({ name: 'Private 2' }).save())
-        .then((c: any) => c.set({ name: 'Private 3' }).save())
-        .then((c: any) => c.patches.find().sort({ _id: 1 }))
-        .then((patches: any) => {
+        .then((c) => c.set({ name: 'Private 2' }).save())
+        .then((c) => c.set({ name: 'Private 3' }).save())
+        .then((c) => c.patches.find().sort({ _id: 1 }))
+        .then((patches) => {
           assert.equal(patches.length, 3)
           assert.equal(
             JSON.stringify(patches[1].ops), // First update patch

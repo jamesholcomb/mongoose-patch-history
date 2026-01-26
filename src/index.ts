@@ -5,17 +5,113 @@ import {
   dropRightWhile,
   each,
   get,
-  map,
   merge,
   omit,
   snakeCase,
   tail
 } from 'lodash'
-import { Schema } from 'mongoose'
+import {
+  ClientSession,
+  Document,
+  Model,
+  Mongoose,
+  Query,
+  Schema,
+  SchemaDefinitionProperty,
+  Types
+} from 'mongoose'
 import { inherits } from 'util'
 
+// ============================================================================
+// Type Definitions
+// ============================================================================
+
+/** Schema include configuration for additional fields in patch documents */
+interface SchemaInclude {
+  type: SchemaDefinitionProperty
+  required?: boolean
+  from?: string
+}
+
+/** Plugin options passed by the user */
+export interface PatchHistoryOptions {
+  mongoose: Mongoose
+  name: string
+  includes?: Record<string, SchemaInclude>
+  excludes?: string[]
+  removePatches?: boolean
+  transforms?: [(name: string) => string, (name: string) => string]
+  trackOriginalValue?: boolean
+}
+
+/** Internal resolved options with computed properties */
+interface ResolvedOptions {
+  mongoose: Mongoose
+  name: string
+  _idType: SchemaDefinitionProperty
+  excludes: string[][]
+  includes: Record<string, SchemaInclude>
+  removePatches: boolean
+  transforms: [(name: string) => string, (name: string) => string]
+  trackOriginalValue: boolean
+}
+
+/** JSON Patch operation type - includes _get for internal fast-json-patch operations */
+interface PatchOperation {
+  op: 'add' | 'remove' | 'replace' | 'move' | 'copy' | 'test' | '_get'
+  path: string
+  value?: unknown
+  from?: string
+  originalValue?: unknown
+}
+
+/** Patch data input for creating a patch document */
+interface PatchDataInput {
+  date: Date
+  ops: PatchOperation[]
+  ref: Types.ObjectId | string | number
+  [key: string]: unknown
+}
+
+/** Patch document structure (extends Document for queried documents) */
+interface PatchData extends Document {
+  date: Date
+  ops: PatchOperation[]
+  ref: Types.ObjectId | string | number
+  [key: string]: unknown
+}
+
+/** Document with patch history methods and properties */
+interface PatchHistoryDocument extends Document {
+  _original?: Record<string, unknown>
+  patches: Model<PatchData>
+  data(): Record<string, unknown>
+  rollback(
+    patchId: Types.ObjectId | string,
+    data?: Record<string, unknown>,
+    save?: boolean
+  ): Promise<PatchHistoryDocument>
+}
+
+/** Query context for update operations */
+interface UpdateQueryContext {
+  model: Model<Document>
+  _conditions: Record<string, unknown>
+  _update?: Record<string, unknown>
+  _original?: Record<string, unknown>
+  _originalId?: Types.ObjectId
+  _originalIds?: Types.ObjectId[]
+  _originals?: Record<string, unknown>[]
+  options: Record<string, unknown>
+  getOptions(): { session?: ClientSession }
+}
+
+// ============================================================================
+// Error Classes
+// ============================================================================
+
 export class RollbackError extends Error {
-  constructor(message: any) {
+  constructor(message: string) {
     super(message)
     this.name = 'RollbackError'
     Error.captureStackTrace(this, this.constructor)
@@ -24,31 +120,38 @@ export class RollbackError extends Error {
 
 inherits(RollbackError, Error)
 
-const createPatchModel = (options: any): any => {
-  const def: any = {
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+const createPatchModel = (options: ResolvedOptions): Model<PatchData> => {
+  const def: Record<string, SchemaDefinitionProperty> = {
     date: { type: Date, required: true, default: Date.now },
     ops: { type: [], required: true },
     ref: { type: options._idType, required: true, index: true }
   }
 
-  each(options.includes, (type: any, name: any) => {
-    def[name] = omit(type, 'from')
+  each(options.includes, (type: SchemaInclude, name: string) => {
+    def[name] = omit(type, 'from') as SchemaDefinitionProperty
   })
 
-  const PatchSchema: any = new Schema(def)
+  const PatchSchema = new Schema<PatchData>(def)
 
-  return options.mongoose.model(
+  return options.mongoose.model<PatchData>(
     options.transforms[0](`${options.name}`),
     PatchSchema,
     options.transforms[1](`${options.name}`)
   )
 }
 
-const defaultOptions: any = {
+export const defaultOptions = {
   includes: {},
-  excludes: [],
+  excludes: [] as string[],
   removePatches: true,
-  transforms: [camelCase, snakeCase],
+  transforms: [camelCase, snakeCase] as [
+    (name: string) => string,
+    (name: string) => string
+  ],
   trackOriginalValue: false
 }
 
@@ -58,7 +161,7 @@ const ARRAY_INDEX_WILDCARD = '*'
  * Splits a json-patch-path of form `/path/to/object` to an array `['path', 'to', 'object']`.
  * Note: `/` is returned as `[]`
  *
- * @param {string} path Path to split
+ * @param path Path to split
  */
 const getArrayFromPath = (path: string): string[] =>
   path.replace(/^\//, '').split('/')
@@ -68,18 +171,21 @@ const getArrayFromPath = (path: string): string[] =>
  * This check joins the `path` and `value` property of the `operation`
  * and removes any hit.
  *
- * @param {import('fast-json-patch').Operation} patch operation to check with `excludePath`
- * @param {String[]} excludePath Path to property to remove from value of `operation`
+ * @param patch operation to check with `excludePath`
+ * @param excludePath Path to property to remove from value of `operation`
  *
  * @return `false` if `patch.value` is `{}` or `undefined` after remove, `true` in any other case
  */
-const deepRemovePath = (patch: any, excludePath: string[]): boolean => {
+const deepRemovePath = (
+  patch: PatchOperation,
+  excludePath: string[]
+): boolean => {
   const operationPath: string[] = sanitizeEmptyPath(
     getArrayFromPath(patch.path)
   )
 
   if (isPathContained(operationPath, excludePath)) {
-    let value: any = patch.value
+    let value = patch.value as Record<string, unknown> | unknown[] | undefined
 
     // because the paths overlap start at patchPath.length
     // e.g.: patch: { path:'/object', value:{ property: 'test' } }
@@ -90,28 +196,36 @@ const deepRemovePath = (patch: any, excludePath: string[]): boolean => {
         // start over with each array element and make a fresh check
         // Note: it can happen that array elements are rendered to: {}
         //         we need to keep them to keep the order of array elements consistent
-        value.forEach((elem: any) => {
-          deepRemovePath({ path: '/', value: elem }, excludePath.slice(i + 1))
+        value.forEach((elem: unknown) => {
+          deepRemovePath(
+            { op: 'add', path: '/', value: elem },
+            excludePath.slice(i + 1)
+          )
         })
 
         // If the patch value has turned to {} return false so this patch can be filtered out
-        if (Object.keys(patch.value).length === 0) {
+        const patchValue = patch.value as Record<string, unknown>
+        if (Object.keys(patchValue).length === 0) {
           return false
         }
         return true
       }
-      value = value[excludePath[i]]
+      value = (value as Record<string, unknown>)?.[excludePath[i]] as
+        | Record<string, unknown>
+        | undefined
 
       if (typeof value === 'undefined') {
         return true
       }
     }
-    if (typeof value[excludePath[excludePath.length - 1]] === 'undefined') {
+    const lastKey = excludePath[excludePath.length - 1]
+    if (typeof (value as Record<string, unknown>)?.[lastKey] === 'undefined') {
       return true
     } else {
-      delete value[excludePath[excludePath.length - 1]]
+      delete (value as Record<string, unknown>)[lastKey]
       // If the patch value has turned to {} return false so this patch can be filtered out
-      if (Object.keys(patch.value).length === 0) {
+      const patchValue = patch.value as Record<string, unknown>
+      if (Object.keys(patchValue).length === 0) {
         return false
       }
     }
@@ -122,7 +236,7 @@ const deepRemovePath = (patch: any, excludePath: string[]): boolean => {
 
 /**
  * Sanitizes a path `['']` to be used with `isPathContained()`
- * @param {String[]} path
+ * @param path
  */
 const sanitizeEmptyPath = (path: string[]): string[] =>
   path.length === 1 && path[0] === '' ? [] : path
@@ -152,17 +266,23 @@ const isIntegerGreaterEqual0 = (entry: string): boolean =>
 // used to convert bson to json - especially ObjectID references need
 // to be converted to hex strings so that the jsonpatch `compare` method
 // works correctly
-const toJSON = (obj: any): any => JSON.parse(JSON.stringify(obj))
+const toJSON = <T>(obj: T): T => JSON.parse(JSON.stringify(obj))
 
 // helper function to merge query conditions after an update has happened
 // useful if a property which was initially defined in _conditions got overwritten
 // with the update
 const mergeQueryConditionsWithUpdate = (
-  _conditions: any,
-  _update: any
-): any => {
-  const update: any = _update ? _update.$set || _update : _update
-  const conditions: any = Object.assign({}, _conditions, update)
+  _conditions: Record<string, unknown>,
+  _update?: Record<string, unknown>
+): Record<string, unknown> => {
+  const update = _update
+    ? (_update.$set as Record<string, unknown>) || _update
+    : _update
+  const conditions: Record<string, unknown> = Object.assign(
+    {},
+    _conditions,
+    update
+  )
 
   // excluding updates other than $set
   Object.keys(conditions).forEach((key: string) => {
@@ -173,14 +293,22 @@ const mergeQueryConditionsWithUpdate = (
   return conditions
 }
 
-export default function (schema: Schema, opts: any): void {
-  const options = merge({}, defaultOptions, opts)
+// ============================================================================
+// Main Plugin
+// ============================================================================
 
-  // get _id type from schema
-  options._idType = schema.paths['_id'].options.type
-
-  // transform excludes option
-  options.excludes = options.excludes.map(getArrayFromPath)
+export default function (schema: Schema, opts: PatchHistoryOptions): void {
+  // Build resolved options
+  const options: ResolvedOptions = {
+    mongoose: opts.mongoose,
+    name: opts.name,
+    _idType: schema.paths['_id'].options.type,
+    excludes: (opts.excludes || []).map(getArrayFromPath),
+    includes: opts.includes || {},
+    removePatches: opts.removePatches !== undefined ? opts.removePatches : true,
+    transforms: opts.transforms || [camelCase, snakeCase],
+    trackOriginalValue: opts.trackOriginalValue || false
+  }
 
   // validate parameters
   assert(options.mongoose, '`mongoose` option must be defined')
@@ -190,11 +318,13 @@ export default function (schema: Schema, opts: any): void {
 
   // used to compare instance data snapshots. depopulates instance,
   // removes version key and object id
-  schema.methods.data = function (this: any) {
+  schema.methods.data = function (
+    this: PatchHistoryDocument
+  ): Record<string, unknown> {
     return this.toObject({
       depopulate: true,
       versionKey: false,
-      transform: (doc: any, ret: any /*, options: any*/) => {
+      transform: (_doc: Document, ret: Record<string, unknown>) => {
         delete ret._id
 
         // if timestamps option is set on schema, remove timestamp fields
@@ -203,19 +333,23 @@ export default function (schema: Schema, opts: any): void {
         if (config === true) {
           delete ret.createdAt
           delete ret.updatedAt
-        } else if (typeof config === 'object') {
-          if (config.createdAt) {
+        } else if (typeof config === 'object' && config !== null) {
+          const tsConfig = config as {
+            createdAt?: string | boolean
+            updatedAt?: string | boolean
+          }
+          if (tsConfig.createdAt) {
             delete ret[
-              typeof config.createdAt === 'string'
-                ? config.createdAt
+              typeof tsConfig.createdAt === 'string'
+                ? tsConfig.createdAt
                 : 'createdAt'
             ]
           }
 
-          if (config.updatedAt) {
+          if (tsConfig.updatedAt) {
             delete ret[
-              typeof config.updatedAt === 'string'
-                ? config.updatedAt
+              typeof tsConfig.updatedAt === 'string'
+                ? tsConfig.updatedAt
                 : 'updatedAt'
             ]
           }
@@ -226,27 +360,29 @@ export default function (schema: Schema, opts: any): void {
 
   // roll the document back to the state of a given patch id()
   schema.methods.rollback = function (
-    this: any,
-    patchId: any,
-    data: any,
+    this: PatchHistoryDocument,
+    patchId: Types.ObjectId | string,
+    data: Record<string, unknown> = {},
     save: boolean = true
-  ): Promise<any> {
+  ): Promise<PatchHistoryDocument> {
     return this.patches
-      .find({ ref: this.id })
+      .find({ ref: this._id })
       .sort({ date: 1 })
       .exec()
       .then(
-        (patches: any[]): Promise<any> =>
-          new Promise((resolve: any, reject: any) => {
+        (patches: PatchData[]): Promise<PatchHistoryDocument> =>
+          new Promise((resolve, reject) => {
             // patch doesn't exist
-            if (!~map(patches, 'id').indexOf(patchId)) {
+            const patchIds = patches.map((p) => p._id?.toString())
+            if (!patchIds.includes(patchId.toString())) {
               return reject(new RollbackError("patch doesn't exist"))
             }
 
             // get all patches that should be applied
-            const apply: any[] = dropRightWhile(
+            const apply: PatchData[] = dropRightWhile(
               patches,
-              (patch: any): boolean => patch.id !== patchId
+              (patch: PatchData): boolean =>
+                patch._id?.toString() !== patchId.toString()
             )
 
             // if the patches that are going to be applied are all existing patches,
@@ -256,9 +392,11 @@ export default function (schema: Schema, opts: any): void {
             }
 
             // apply patches to `state`
-            const state: any = {}
-            apply.forEach((patch: any) => {
-              jsonpatch.applyPatch(state, patch.ops, true)
+            const state: Record<string, unknown> = {}
+            apply.forEach((patch: PatchData) => {
+              // Cast to any for jsonpatch compatibility - the ops structure is correct
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              jsonpatch.applyPatch(state, patch.ops as any, true)
             })
 
             // set new state
@@ -276,15 +414,17 @@ export default function (schema: Schema, opts: any): void {
 
   // create patch model, enable static model access via `Patches` and
   // instance method access through an instances `patches` property
-  const Patches: any = createPatchModel(options)
-  schema.statics.Patches = Patches
-  schema.virtual('patches').get(function (this: any): any {
+  const Patches: Model<PatchData> = createPatchModel(options)
+  ;(schema.statics as Record<string, unknown>).Patches = Patches
+  schema.virtual('patches').get(function (
+    this: PatchHistoryDocument
+  ): Model<PatchData> {
     return Patches
   })
 
   // after a document is initialized or saved, fresh snapshots of the
   // documents data are created
-  const snapshot = function (this: any): void {
+  const snapshot = function (this: PatchHistoryDocument): void {
     this._original = toJSON(this.data())
   }
   schema.post('init', snapshot)
@@ -292,37 +432,52 @@ export default function (schema: Schema, opts: any): void {
 
   // when a document is removed and `removePatches` is not set to false ,
   // all patch documents from the associated patch collection are also removed
-  function deletePatches(document: any): Promise<any> {
-    return document.patches
-      .find({ ref: document._id })
-      .then(
-        (patches: any[]): Promise<any[]> =>
-          Promise.all(patches.map((patch: any) => patch.remove()))
-      )
+  async function deletePatches(document: PatchHistoryDocument): Promise<void> {
+    const patches = await document.patches.find({ ref: document._id })
+    await Promise.all(patches.map((patch) => patch.deleteOne()))
   }
 
-  schema.pre('remove', function (this: any, next: any): any {
-    if (!options.removePatches) {
-      return next()
+  // Mongoose 9: pre middleware uses async functions instead of next()
+  schema.pre(
+    'deleteOne',
+    { document: true, query: false },
+    async function (this: PatchHistoryDocument) {
+      if (!options.removePatches) {
+        return
+      }
+      await deletePatches(this)
     }
-
-    deletePatches(this)
-      .then(() => next())
-      .catch(next)
-  })
+  )
 
   // when a document is saved, the json patch that reflects the changes is
   // computed. if the patch consists of one or more operations (meaning the
   // document has changed), a new patch document reflecting the changes is
   // added to the associated patch collection
-  function createPatch(document: any, queryOptions: any = {}): Promise<any> {
-    const { _id: ref }: any = document
-    let ops: any[] = jsonpatch.compare(
+  async function createPatch(
+    document: PatchHistoryDocument,
+    queryOptions: Record<string, unknown> = {}
+  ): Promise<void> {
+    const { _id: ref } = document
+    const compareResult = jsonpatch.compare(
       document._original || {},
       toJSON(document.data())
     )
+    let ops: PatchOperation[] = compareResult.map((op) => {
+      const patchOp: PatchOperation = {
+        op: op.op as PatchOperation['op'],
+        path: op.path
+      }
+      if ('value' in op) {
+        patchOp.value = op.value
+      }
+      if ('from' in op) {
+        patchOp.from = op.from
+      }
+      return patchOp
+    })
+
     if (options.excludes.length > 0) {
-      ops = ops.filter((op: any): boolean => {
+      ops = ops.filter((op: PatchOperation): boolean => {
         const pathArray: string[] = getArrayFromPath(op.path)
         return (
           !options.excludes.some((exclude: string[]): boolean =>
@@ -337,95 +492,110 @@ export default function (schema: Schema, opts: any): void {
 
     // don't save a patch when there are no changes to save
     if (!ops.length) {
-      return Promise.resolve()
+      return
     }
 
     // track original values if enabled
     if (options.trackOriginalValue) {
-      ops.map((entry: any) => {
+      ops.forEach((entry: PatchOperation) => {
         const path: string = tail(entry.path.split('/')).join('.')
         entry.originalValue = get(
           document.isNew ? {} : document._original,
           path
         )
-        return entry // Added return for .map
       })
     }
 
     // assemble patch data
-    const data: any = {
+    const docWithTimestamps = document as Document & {
+      updatedAt?: Date
+      createdAt?: Date
+    }
+    const data: PatchDataInput = {
       ops,
       ref,
-      date: document.updatedAt || document.createdAt
+      date:
+        docWithTimestamps.updatedAt || docWithTimestamps.createdAt || new Date()
     }
 
-    each(options.includes, (type: any, name: string) => {
+    each(options.includes, (type: SchemaInclude, name: string) => {
+      const fromKey = type.from || name
       data[name] =
-        document[type.from || name] || queryOptions[type.from || name]
+        (document as unknown as Record<string, unknown>)[fromKey] ||
+        (queryOptions as Record<string, unknown>)[fromKey]
     })
 
-    return document.patches.create(data)
+    await document.patches.create(data)
   }
 
-  schema.pre('save', function (this: any, next: any): any {
-    createPatch(this)
-      .then(() => next())
-      .catch(next)
+  schema.pre('save', async function (this: PatchHistoryDocument) {
+    await createPatch(this)
   })
 
-  schema.pre('findOneAndRemove', function (this: any, next: any): any {
-    if (!options.removePatches) {
-      return next()
-    }
+  schema.pre(
+    'findOneAndDelete',
+    async function (this: Query<unknown, Document>) {
+      if (!options.removePatches) {
+        return
+      }
 
-    const session: any = this.getOptions().session
+      const session = this.getOptions().session
+      const original = await this.model
+        .findOne(this.getFilter())
+        .session(session || null)
 
-    this.model
-      .findOne(this._conditions)
-      .session(session)
-      .then((original: any): Promise<any> | undefined => {
-        // Added return type for .then callback
-        if (!original) {
-          return // Added check for original
-        }
-        return deletePatches(original)
-      })
-      .then(() => next())
-      .catch(next)
-  })
-
-  schema.pre('findOneAndUpdate', preUpdateOne)
-
-  function preUpdateOne(this: any, next: any): void {
-    const session: any = this.getOptions().session
-
-    this.model
-      .findOne(this._conditions)
-      .session(session)
-      .then((original: any): void => {
-        if (original) {
-          this._originalId = original._id
-          this._original = toJSON(original.data())
-        }
-      })
-      .then(() => next())
-      .catch(next)
-  }
-
-  schema.post(
-    'findOneAndUpdate',
-    function (this: any, doc: any, next: any): void {
-      postUpdateOne.call(this, doc, next)
+      if (original) {
+        await deletePatches(original as unknown as PatchHistoryDocument)
+      }
     }
   )
 
-  function postUpdateOne(this: any, result: any, next: any): any {
+  async function preUpdateOne(this: UpdateQueryContext): Promise<void> {
+    const session = this.getOptions().session
+
+    const original = await this.model
+      .findOne(this._conditions)
+      .session(session || null)
+
+    if (original) {
+      this._originalId = original._id as Types.ObjectId
+      this._original = toJSON(
+        (original as unknown as PatchHistoryDocument).data()
+      )
+    }
+  }
+
+  schema.pre(
+    'findOneAndUpdate',
+    async function (this: Query<unknown, Document>) {
+      await preUpdateOne.call(this as unknown as UpdateQueryContext)
+    }
+  )
+
+  schema.post(
+    'findOneAndUpdate',
+    async function (this: Query<unknown, Document>, result: unknown) {
+      await postUpdateOne.call(this as unknown as UpdateQueryContext, result)
+    }
+  )
+
+  async function postUpdateOne(
+    this: UpdateQueryContext,
+    result: unknown
+  ): Promise<void> {
     // result might be a mongodb ModifyResult, null or a Document
-    if (result?.lastErrorObject?.n === 0 && result?.upsertedCount === 0) {
-      return next()
+    const modifyResult = result as {
+      lastErrorObject?: { n: number }
+      upsertedCount?: number
+    } | null
+    if (
+      modifyResult?.lastErrorObject?.n === 0 &&
+      modifyResult?.upsertedCount === 0
+    ) {
+      return
     }
 
-    let conditions: any
+    let conditions: Record<string, unknown>
     if (this._originalId) {
       conditions = {
         _id: {
@@ -439,54 +609,64 @@ export default function (schema: Schema, opts: any): void {
       )
     }
 
-    const session: any = this.getOptions().session
+    const session = this.getOptions().session
 
-    this.model
-      .findOne(conditions)
-      .session(session)
-      .then((doc: any): Promise<any> | undefined => {
-        if (!doc) {
-          return
-        }
-        doc._original = this._original
-        return createPatch(doc, this.options)
-      })
-      .then(() => next())
-      .catch(next)
+    const doc = await this.model.findOne(conditions).session(session || null)
+
+    if (doc) {
+      (doc as unknown as PatchHistoryDocument)._original = this._original
+      await createPatch(doc as unknown as PatchHistoryDocument, this.options)
+    }
   }
 
-  schema.pre('updateOne', preUpdateOne)
-  schema.post('updateOne', postUpdateOne)
+  schema.pre('updateOne', async function (this: Query<unknown, Document>) {
+    await preUpdateOne.call(this as unknown as UpdateQueryContext)
+  })
 
-  function preUpdateMany(this: any, next: any): void {
-    const session: any = this.getOptions().session
+  schema.post(
+    'updateOne',
+    async function (this: Query<unknown, Document>, result: unknown) {
+      await postUpdateOne.call(this as unknown as UpdateQueryContext, result)
+    }
+  )
 
-    this.model
+  async function preUpdateMany(this: UpdateQueryContext): Promise<void> {
+    const session = this.getOptions().session
+
+    const originals = await this.model
       .find(this._conditions)
-      .session(session)
-      .then((originals: any[]): void => {
-        const originalIds: any[] = []
-        const originalData: any[] = []
-        for (const original of originals) {
-          originalIds.push(original._id)
-          originalData.push(toJSON(original.data()))
-        }
-        this._originalIds = originalIds
-        this._originals = originalData
-      })
-      .then(() => next())
-      .catch(next)
+      .session(session || null)
+
+    const originalIds: Types.ObjectId[] = []
+    const originalData: Record<string, unknown>[] = []
+    for (const original of originals) {
+      originalIds.push(original._id as Types.ObjectId)
+      originalData.push(
+        toJSON((original as unknown as PatchHistoryDocument).data())
+      )
+    }
+    this._originalIds = originalIds
+    this._originals = originalData
   }
 
-  function postUpdateMany(this: any, result: any, next: any): any {
+  async function postUpdateMany(
+    this: UpdateQueryContext,
+    result: unknown
+  ): Promise<void> {
     // result might be a mongodb ModifyResult, null or a Document
-    if (result?.lastErrorObject?.n === 0 && result?.upsertedCount === 0) {
-      return next()
+    const modifyResult = result as {
+      lastErrorObject?: { n: number }
+      upsertedCount?: number
+    } | null
+    if (
+      modifyResult?.lastErrorObject?.n === 0 &&
+      modifyResult?.upsertedCount === 0
+    ) {
+      return
     }
 
-    let conditions: any
+    let conditions: Record<string, unknown>
     if (this._originalIds && this._originalIds.length > 0) {
-      // Added check for this._originalIds
       conditions = { _id: { $in: this._originalIds } }
     } else {
       conditions = mergeQueryConditionsWithUpdate(
@@ -495,39 +675,27 @@ export default function (schema: Schema, opts: any): void {
       )
     }
 
-    const session: any = this.getOptions().session
+    const session = this.getOptions().session
 
-    this.model
-      .find(conditions)
-      .session(session)
-      .then(
-        (docs: any[]): Promise<any[]> =>
-          Promise.all(
-            docs.map((doc: any, i: number) => {
-              doc._original = this._originals[i]
-              return createPatch(doc, this.options)
-            })
-          )
-      )
-      .then(() => next())
-      .catch(next)
+    const docs = await this.model.find(conditions).session(session || null)
+
+    await Promise.all(
+      docs.map((doc: Document, i: number) => {
+        (doc as unknown as PatchHistoryDocument)._original =
+          this._originals?.[i]
+        return createPatch(doc as unknown as PatchHistoryDocument, this.options)
+      })
+    )
   }
 
-  schema.pre('updateMany', preUpdateMany)
-  schema.post('updateMany', postUpdateMany)
+  schema.pre('updateMany', async function (this: Query<unknown, Document>) {
+    await preUpdateMany.call(this as unknown as UpdateQueryContext)
+  })
 
-  schema.pre('update', function (this: any, next: any): void {
-    if (this.options.multi) {
-      preUpdateMany.call(this, next)
-    } else {
-      preUpdateOne.call(this, next)
+  schema.post(
+    'updateMany',
+    async function (this: Query<unknown, Document>, result: unknown) {
+      await postUpdateMany.call(this as unknown as UpdateQueryContext, result)
     }
-  })
-  schema.post('update', function (this: any, result: any, next: any): void {
-    if (this.options.multi) {
-      postUpdateMany.call(this, result, next)
-    } else {
-      postUpdateOne.call(this, result, next)
-    }
-  })
+  )
 }
