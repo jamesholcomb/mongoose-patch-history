@@ -5,8 +5,8 @@
     "outDir": "./dist",
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": false, // Optional: set to true if you want source maps in the published package
-    "noEmit": false // Ensure this is false or not present to allow emitting files
+    "sourceMap": true,
+    "noEmit": false
   },
   "include": [
     "src/**/*"
