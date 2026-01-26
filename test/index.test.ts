@@ -132,7 +132,7 @@ describe('mongoose-patch-history', () => {
           from: '_user'
         }
       }
-    } as PatchHistoryOptions
+    }
   )
 
   CommentSchema.virtual('user').set(function (
@@ -161,7 +161,7 @@ describe('mongoose-patch-history', () => {
       reason: { type: String, from: '__reason' },
       user: { type: Object, from: '__user' }
     }
-  } as PatchHistoryOptions)
+  })
   PostSchema.virtual('user').set(function (
     this: PostDocument,
     user: { name: string }
@@ -205,7 +205,7 @@ describe('mongoose-patch-history', () => {
       '/array/*/hiddenProperty',
       '/emptyArray/*/hiddenProperty'
     ]
-  } as PatchHistoryOptions)
+  })
 
   const PricePoolSchema = new Schema<PricePoolDocument>({
     name: { type: String },
@@ -214,7 +214,7 @@ describe('mongoose-patch-history', () => {
     mongoose: mongoose,
     name: 'pricePoolPatches',
     trackOriginalValue: true
-  } as PatchHistoryOptions)
+  })
 
   let Comment: CommentModel,
     Post: PostModel,
@@ -286,7 +286,7 @@ describe('mongoose-patch-history', () => {
         DataSchema.plugin(patchHistory, {
           mongoose: mongoose,
           name
-        } as PatchHistoryOptions)
+        })
       )
     })
 
@@ -295,7 +295,7 @@ describe('mongoose-patch-history', () => {
         TestSchema.plugin(patchHistory, {
           mongoose: mongoose,
           name
-        } as PatchHistoryOptions)
+        })
       )
     })
   })
@@ -551,7 +551,7 @@ describe('mongoose-patch-history', () => {
         { includeResultMetadata: true }
       )
         .then((result) => {
-          const modifyResult = result as { value: PostDocument }
+          const modifyResult = result
           if (!modifyResult.value) {
             throw new Error('Post not found')
           }
@@ -1085,7 +1085,7 @@ describe('mongoose-patch-history', () => {
       PersonSchema.plugin(patchHistory, {
         mongoose: mongoose,
         name: 'personPatches'
-      } as PatchHistoryOptions)
+      })
       Person = mongoose.model<PersonDocument, PersonModel>(
         'Person',
         PersonSchema
@@ -1145,7 +1145,7 @@ describe('mongoose-patch-history', () => {
         mongoose: mongoose,
         name: 'companyPatches',
         trackOriginalValue: true
-      } as PatchHistoryOptions)
+      })
       Company = mongoose.model<CompanyDocument, CompanyModel>(
         'Company',
         CompanySchema
