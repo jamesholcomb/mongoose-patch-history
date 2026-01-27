@@ -19,7 +19,7 @@
     "lodash": "^4.17.21"
   },
   "peerDependencies": {
-    "mongoose": "^9"
+    "mongoose": "^8"
   },
   "devDependencies": {
     "@istanbuljs/nyc-config-typescript": "^1.0.2",
@@ -32,7 +32,7 @@
     "eslint-plugin-import": "^2.31.0",
     "husky": "^9.1.7",
     "mocha": "^11.2.2",
-    "mongoose": "^9.1.5",
+    "mongoose": "^8.21.1",
     "nyc": "^17.1.0",
     "prettier": "^3.5.3",
     "tsx": "^4.19.4",
