@@ -1,6 +1,6 @@
 {
   "name": "mongoose-patch-history",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Mongoose plugin that saves a history of JSON patch operations for all documents belonging to a schema in an associated 'patches' collection",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
