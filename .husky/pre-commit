@@ -8,7 +8,7 @@ echo "Staging changes from Prettier & ESLint..."
 git add .
 
 echo "Running tests and compiling..."
-if npm run test && npm run compile; then
+if npm run test && npm run build; then
   echo "Pre-commit checks passed."
   exit 0
 else

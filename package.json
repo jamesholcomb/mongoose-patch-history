@@ -40,10 +40,10 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "compile": "npm run clean && tsc -p tsconfig.build.json",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --fix",
     "coverage": "nyc mocha",
-    "prepublishOnly": "npm run compile",
+    "prepublishOnly": "npm run build",
     "prepare": "husky",
     "prettier": "prettier --no-semi --single-quote --trailing-comma none --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "mocha \"test/**/*.test.ts\""
