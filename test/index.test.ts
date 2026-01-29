@@ -1189,7 +1189,83 @@ describe('mongoose-patch-history', () => {
           )
         })
         .then(done)
-        .catch(done)
+    })
+  })
+
+  describe('concurrent updates', () => {
+    it('handles concurrent updates gracefully using withTransaction', async function () {
+      const post = await Post.create({ title: 'concurrent' })
+      let successCount = 0
+      let failureCount = 0
+      const iterations = 5
+
+      // Attempt 5 concurrent transactions
+      await Promise.all(
+        Array.from({ length: iterations }).map(async (_, i) => {
+          const session = await mongoose.startSession()
+          try {
+            await session.withTransaction(async () => {
+              const p = await Post.findOne({ _id: post._id }).session(session)
+              if (!p) {throw new Error('Post not found')}
+              p.title = `concurrent update ${i}`
+              await p.save()
+            })
+            successCount++
+          } catch (err: any) {
+            if (err instanceof mongoose.mongo.MongoError && err.code === 251) {
+              // withTransaction retries TransientTransactionError, but if it eventually fails or hits other errors:
+              failureCount++
+            }
+          } finally {
+            await session.endSession()
+          }
+        })
+      )
+
+      // 5 attempts, should be 5 total
+      assert.equal(successCount + failureCount, iterations)
+      // At least one should succeed
+      assert.ok(successCount > 0, 'At least one update should succeed')
+
+      // Verify patches
+      // Since we used transactions, if a transaction committed, the patch must be there.
+      // If it aborted, the patch must NOT be there.
+      const patches = await post.patches.find({ ref: post._id })
+      // +1 for creation
+      assert.equal(patches.length, successCount + 1)
+    })
+
+    it('handles concurrent updates within a single transaction', async function () {
+      const post = await Post.create({ title: 'concurrent' })
+      let successCount = 0
+      const iterations = 5
+
+      // Attempt 5 concurrent updates within a single transaction
+      const session = await mongoose.startSession()
+      try {
+        await session.withTransaction(async () => {
+          for (let i = 0; i < iterations; i++) {
+            const p = await Post.findOne({ _id: post._id }).session(session)
+            if (!p) {throw new Error('Post not found')}
+            p.title = `concurrent update ${i}`
+            await p.save()
+            successCount++
+          }
+        })
+      } finally {
+        await session.endSession()
+      }
+
+      // At least one should succeed
+      assert.equal(successCount, iterations, 'All updates should succeed')
+
+      // Verify patches
+      // Since we used transactions, if a transaction committed, the patches must be there.
+      // If it aborted, the patches must NOT be there.
+      const patches = await post.patches.find({ ref: post._id })
+
+      // +1 for creation, +5 for the updates in the loop
+      assert.equal(patches.length, successCount + 1)
     })
   })
 })
