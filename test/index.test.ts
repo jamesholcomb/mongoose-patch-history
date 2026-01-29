@@ -1206,7 +1206,9 @@ describe('mongoose-patch-history', () => {
           try {
             await session.withTransaction(async () => {
               const p = await Post.findOne({ _id: post._id }).session(session)
-              if (!p) {throw new Error('Post not found')}
+              if (!p) {
+                throw new Error('Post not found')
+              }
               p.title = `concurrent update ${i}`
               await p.save()
             })
@@ -1246,7 +1248,9 @@ describe('mongoose-patch-history', () => {
         await session.withTransaction(async () => {
           for (let i = 0; i < iterations; i++) {
             const p = await Post.findOne({ _id: post._id }).session(session)
-            if (!p) {throw new Error('Post not found')}
+            if (!p) {
+              throw new Error('Post not found')
+            }
             p.title = `concurrent update ${i}`
             await p.save()
             successCount++
